@@ -156,10 +156,15 @@ export function isInputData(
   return !isDecision(element) && !isBKM(element)
 }
 
+// Generate a valid NCName ID (XML NCName can't start with a digit)
+export function generateId(): string {
+  return `_${crypto.randomUUID()}`
+}
+
 // Create default/empty instances
 export function createInputData(partial?: Partial<InputData>): InputData {
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: 'New Input',
     typeRef: 'string',
     ...partial,
@@ -168,7 +173,7 @@ export function createInputData(partial?: Partial<InputData>): InputData {
 
 export function createDecision(partial?: Partial<Decision>): Decision {
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: 'New Decision',
     variable: {
       name: 'New Decision',
@@ -177,7 +182,7 @@ export function createDecision(partial?: Partial<Decision>): Decision {
     informationRequirements: [],
     knowledgeRequirements: [],
     expression: {
-      id: crypto.randomUUID(),
+      id: generateId(),
       text: '',
       typeRef: 'string',
     },
@@ -189,7 +194,7 @@ export function createBKM(
   partial?: Partial<BusinessKnowledgeModel>
 ): BusinessKnowledgeModel {
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: 'New Business Knowledge Model',
     variable: {
       name: 'New Business Knowledge Model',
@@ -197,7 +202,7 @@ export function createBKM(
     },
     parameters: [],
     expression: {
-      id: crypto.randomUUID(),
+      id: generateId(),
       text: '',
       typeRef: 'any',
     },
@@ -208,7 +213,7 @@ export function createBKM(
 
 export function createDMNModel(partial?: Partial<DMNModel>): DMNModel {
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: 'New DMN Model',
     namespace: 'https://example.org/dmn',
     inputs: [],

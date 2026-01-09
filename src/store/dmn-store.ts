@@ -11,6 +11,7 @@ import {
   createInputData,
   createDecision,
   createBKM,
+  generateId,
 } from '../types/dmn'
 
 // Selection state
@@ -204,7 +205,7 @@ export const useDMNStore = create<EditorState>()(
           )
           if (!exists) {
             decision.informationRequirements.push({
-              id: crypto.randomUUID(),
+              id: generateId(),
               type,
               href: dependencyId,
             })
@@ -234,7 +235,7 @@ export const useDMNStore = create<EditorState>()(
           )
           if (!exists) {
             decision.knowledgeRequirements.push({
-              id: crypto.randomUUID(),
+              id: generateId(),
               href: bkmId,
             })
             state.isDirty = true

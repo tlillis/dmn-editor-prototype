@@ -14,6 +14,7 @@ import {
   Handle,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import Dagre from '@dagrejs/dagre'
 import { useDMNStore } from '../../../store/dmn-store'
 import { Database, GitBranch, BookOpen } from 'lucide-react'
 import { cn } from '../../../lib/utils'
@@ -141,7 +142,11 @@ const nodeTypes: NodeTypes = {
   bkm: BKMNode,
 }
 
-// Simple layout algorithm using topological sort
+// Node dimensions for layout calculation
+const NODE_WIDTH = 180
+const NODE_HEIGHT = 60
+
+// Use Dagre for automatic hierarchical layout
 function layoutNodes(
   inputs: InputData[],
   decisions: Decision[],
@@ -150,15 +155,23 @@ function layoutNodes(
   const nodes: Node[] = []
   const edges: Edge[] = []
 
-  const HORIZONTAL_SPACING = 200
-  const VERTICAL_SPACING = 120
+  // Create dagre graph
+  const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}))
+  g.setGraph({
+    rankdir: 'TB', // Top to bottom
+    nodesep: 50, // Horizontal spacing between nodes
+    ranksep: 80, // Vertical spacing between ranks
+    marginx: 20,
+    marginy: 20,
+  })
 
-  // Position inputs at the top
-  inputs.forEach((input, i) => {
+  // Add input nodes
+  inputs.forEach((input) => {
+    g.setNode(input.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
     nodes.push({
       id: input.id,
       type: 'input',
-      position: { x: i * HORIZONTAL_SPACING, y: 0 },
+      position: { x: 0, y: 0 }, // Will be set by dagre
       data: {
         label: input.name,
         typeRef: input.typeRef,
@@ -167,15 +180,13 @@ function layoutNodes(
     })
   })
 
-  // Position BKMs in a separate column on the right
-  bkms.forEach((bkm, i) => {
+  // Add BKM nodes
+  bkms.forEach((bkm) => {
+    g.setNode(bkm.id, { width: NODE_WIDTH + 40, height: NODE_HEIGHT })
     nodes.push({
       id: bkm.id,
       type: 'bkm',
-      position: {
-        x: (inputs.length + 1) * HORIZONTAL_SPACING,
-        y: i * VERTICAL_SPACING,
-      },
+      position: { x: 0, y: 0 }, // Will be set by dagre
       data: {
         label: bkm.name,
         typeRef: bkm.variable.typeRef,
@@ -185,102 +196,75 @@ function layoutNodes(
     })
   })
 
-  // Build dependency graph for decisions
-  const decisionMap = new Map(decisions.map((d) => [d.id, d]))
-  const levels = new Map<string, number>()
+  // Add decision nodes and their edges
+  decisions.forEach((decision) => {
+    g.setNode(decision.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
+    nodes.push({
+      id: decision.id,
+      type: 'decision',
+      position: { x: 0, y: 0 }, // Will be set by dagre
+      data: {
+        label: decision.name,
+        typeRef: decision.variable.typeRef,
+        element: decision,
+      },
+    })
 
-  // Calculate level for each decision based on dependencies
-  function getLevel(decisionId: string, visited = new Set<string>()): number {
-    if (visited.has(decisionId)) return 0 // Cycle detection
-    visited.add(decisionId)
-
-    if (levels.has(decisionId)) return levels.get(decisionId)!
-
-    const decision = decisionMap.get(decisionId)
-    if (!decision) return 0
-
-    let maxLevel = 0
-    for (const req of decision.informationRequirements) {
-      if (req.type === 'decision') {
-        maxLevel = Math.max(maxLevel, getLevel(req.href, visited) + 1)
-      }
-    }
-
-    levels.set(decisionId, maxLevel)
-    return maxLevel
-  }
-
-  // Calculate levels for all decisions
-  decisions.forEach((d) => getLevel(d.id))
-
-  // Group decisions by level
-  const levelGroups = new Map<number, Decision[]>()
-  decisions.forEach((d) => {
-    const level = levels.get(d.id) ?? 0
-    if (!levelGroups.has(level)) {
-      levelGroups.set(level, [])
-    }
-    levelGroups.get(level)!.push(d)
-  })
-
-  // Position decisions by level
-  const sortedLevels = Array.from(levelGroups.keys()).sort((a, b) => a - b)
-  sortedLevels.forEach((level) => {
-    const decisionsAtLevel = levelGroups.get(level)!
-    decisionsAtLevel.forEach((decision, i) => {
-      nodes.push({
-        id: decision.id,
-        type: 'decision',
-        position: {
-          x: i * HORIZONTAL_SPACING,
-          y: (level + 1) * VERTICAL_SPACING,
+    // Add edges for information requirements
+    decision.informationRequirements.forEach((req) => {
+      g.setEdge(req.href, decision.id)
+      edges.push({
+        id: `${req.href}-${decision.id}`,
+        source: req.href,
+        target: decision.id,
+        type: 'smoothstep',
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 15,
+          height: 15,
         },
-        data: {
-          label: decision.name,
-          typeRef: decision.variable.typeRef,
-          element: decision,
+        style: {
+          stroke: req.type === 'input' ? '#3b82f6' : '#22c55e',
+          strokeWidth: 2,
         },
-      })
-
-      // Create edges for information requirements
-      decision.informationRequirements.forEach((req) => {
-        edges.push({
-          id: `${req.href}-${decision.id}`,
-          source: req.href,
-          target: decision.id,
-          type: 'smoothstep',
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 15,
-            height: 15,
-          },
-          style: {
-            stroke: req.type === 'input' ? '#3b82f6' : '#22c55e',
-            strokeWidth: 2,
-          },
-        })
-      })
-
-      // Create edges for knowledge requirements (dashed)
-      decision.knowledgeRequirements.forEach((req) => {
-        edges.push({
-          id: `${req.href}-${decision.id}-bkm`,
-          source: req.href,
-          target: decision.id,
-          type: 'smoothstep',
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 15,
-            height: 15,
-          },
-          style: {
-            stroke: '#a855f7',
-            strokeWidth: 2,
-            strokeDasharray: '5,5',
-          },
-        })
       })
     })
+
+    // Add edges for knowledge requirements (dashed)
+    decision.knowledgeRequirements.forEach((req) => {
+      g.setEdge(req.href, decision.id)
+      edges.push({
+        id: `${req.href}-${decision.id}-bkm`,
+        source: req.href,
+        target: decision.id,
+        type: 'smoothstep',
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 15,
+          height: 15,
+        },
+        style: {
+          stroke: '#a855f7',
+          strokeWidth: 2,
+          strokeDasharray: '5,5',
+        },
+      })
+    })
+  })
+
+  // Run dagre layout
+  Dagre.layout(g)
+
+  // Update node positions from dagre results
+  nodes.forEach((node) => {
+    const dagreNode = g.node(node.id)
+    if (dagreNode) {
+      // Dagre returns center positions, adjust to top-left for React Flow
+      node.position = {
+        x: dagreNode.x - (dagreNode.width ?? NODE_WIDTH) / 2,
+        y: dagreNode.y - (dagreNode.height ?? NODE_HEIGHT) / 2,
+      }
+    }
   })
 
   return { nodes, edges }

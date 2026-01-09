@@ -3,6 +3,7 @@ import {
   isDecision,
   isBKM,
   isInputData,
+  generateId,
   type DMNDataType,
   type InputData,
   type Decision,
@@ -483,10 +484,7 @@ function BKMProperties({ bkm }: { bkm: BusinessKnowledgeModel }) {
           onChange={(e) =>
             updateBKM(bkm.id, {
               expression: {
-                id:
-                  'text' in bkm.expression
-                    ? bkm.expression.id
-                    : crypto.randomUUID(),
+                id: 'text' in bkm.expression ? bkm.expression.id : generateId(),
                 text: e.target.value,
               },
               expressionType: 'literal',
