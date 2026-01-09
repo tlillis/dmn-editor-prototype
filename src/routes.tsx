@@ -4,43 +4,19 @@ import {
   createRootRoute,
   createRoute,
 } from '@tanstack/react-router'
-import { AboutPage } from './pages/about'
-import { NavBar } from './components/nav-bar'
-import { HomePage } from './pages/home'
-import { Wrapper } from './context'
-import type { UserResource, GetToken, LoadedClerk } from '@clerk/types'
-
-export type RouterContext = {
-  user: UserResource | null
-  isSignedIn: boolean
-  getToken: GetToken
-  clerk: LoadedClerk | null
-}
+import { EditorPage } from './features/editor'
 
 const rootRoute = createRootRoute({
-  component: () => (
-    <Wrapper>
-      <NavBar />
-      <main className="max-w-7xl mx-auto">
-        <Outlet />
-      </main>
-    </Wrapper>
-  ),
+  component: () => <Outlet />,
 })
 
 export const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: HomePage,
+  component: EditorPage,
 })
 
-export const aboutRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/about',
-  component: AboutPage,
-})
-
-export const routeTree = rootRoute.addChildren([homeRoute, aboutRoute])
+export const routeTree = rootRoute.addChildren([homeRoute])
 
 export const router = new Router({ routeTree })
 
