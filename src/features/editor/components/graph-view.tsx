@@ -17,7 +17,7 @@ import {
   Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import Dagre from '@dagrejs/dagre'
+import ELK from 'elkjs/lib/elk.bundled.js'
 import { useDMNStore, useConstantReferences } from '../../../store/dmn-store'
 import {
   Database,
@@ -306,15 +306,18 @@ function getVisibleElements(
   return { visibleInputs, visibleDecisions, visibleBkms, hiddenDeps }
 }
 
-// Use Dagre for automatic hierarchical layout
-function layoutNodes(
+// Create ELK instance
+const elk = new ELK()
+
+// Use ELK for automatic hierarchical layout with better edge routing
+async function layoutNodesAsync(
   inputs: InputData[],
   decisions: Decision[],
   bkms: BusinessKnowledgeModel[],
   collapsedNodes: Set<string>,
   toggleCollapse: (id: string) => void,
   onHover: (id: string | null) => void
-): { nodes: Node[]; edges: Edge[] } {
+): Promise<{ nodes: Node[]; edges: Edge[] }> {
   const { visibleInputs, visibleDecisions, visibleBkms } = getVisibleElements(
     inputs,
     decisions,
@@ -330,19 +333,13 @@ function layoutNodes(
     ...visibleBkms.map((b) => b.id),
   ])
 
-  // Create dagre graph
-  const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}))
-  g.setGraph({
-    rankdir: 'TB', // Top to bottom
-    nodesep: 50, // Horizontal spacing between nodes
-    ranksep: 80, // Vertical spacing between ranks
-    marginx: 20,
-    marginy: 20,
-  })
+  // Build ELK graph structure
+  const elkNodes: { id: string; width: number; height: number }[] = []
+  const elkEdges: { id: string; sources: string[]; targets: string[] }[] = []
 
   // Add input nodes
   visibleInputs.forEach((input) => {
-    g.setNode(input.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
+    elkNodes.push({ id: input.id, width: NODE_WIDTH, height: NODE_HEIGHT })
     nodes.push({
       id: input.id,
       type: 'input',
@@ -358,7 +355,7 @@ function layoutNodes(
 
   // Add BKM nodes
   visibleBkms.forEach((bkm) => {
-    g.setNode(bkm.id, { width: NODE_WIDTH + 40, height: NODE_HEIGHT })
+    elkNodes.push({ id: bkm.id, width: NODE_WIDTH + 40, height: NODE_HEIGHT })
     nodes.push({
       id: bkm.id,
       type: 'bkm',
@@ -380,7 +377,7 @@ function layoutNodes(
       decision.informationRequirements.length > 0 ||
       decision.knowledgeRequirements.length > 0
 
-    g.setNode(decision.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
+    elkNodes.push({ id: decision.id, width: NODE_WIDTH, height: NODE_HEIGHT })
     nodes.push({
       id: decision.id,
       type: 'decision',
@@ -400,9 +397,14 @@ function layoutNodes(
     decision.informationRequirements.forEach((req) => {
       if (!visibleIds.has(req.href)) return
 
-      g.setEdge(req.href, decision.id)
+      const edgeId = `${req.href}-${decision.id}`
+      elkEdges.push({
+        id: edgeId,
+        sources: [req.href],
+        targets: [decision.id],
+      })
       edges.push({
-        id: `${req.href}-${decision.id}`,
+        id: edgeId,
         source: req.href,
         target: decision.id,
         type: 'smoothstep',
@@ -422,9 +424,14 @@ function layoutNodes(
     decision.knowledgeRequirements.forEach((req) => {
       if (!visibleIds.has(req.href)) return
 
-      g.setEdge(req.href, decision.id)
+      const edgeId = `${req.href}-${decision.id}-bkm`
+      elkEdges.push({
+        id: edgeId,
+        sources: [req.href],
+        targets: [decision.id],
+      })
       edges.push({
-        id: `${req.href}-${decision.id}-bkm`,
+        id: edgeId,
         source: req.href,
         target: decision.id,
         type: 'smoothstep',
@@ -442,16 +449,32 @@ function layoutNodes(
     })
   })
 
-  // Run dagre layout
-  Dagre.layout(g)
+  // Run ELK layout
+  const elkGraph = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'layered',
+      'elk.direction': 'DOWN',
+      'elk.spacing.nodeNode': '50',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '80',
+      'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+      'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+      'elk.edgeRouting': 'ORTHOGONAL',
+      'elk.layered.mergeEdges': 'true',
+    },
+    children: elkNodes,
+    edges: elkEdges,
+  }
 
-  // Update node positions from dagre results
-  nodes.forEach((node) => {
-    const dagreNode = g.node(node.id)
-    if (dagreNode) {
+  const layoutedGraph = await elk.layout(elkGraph)
+
+  // Update node positions from ELK results
+  layoutedGraph.children?.forEach((elkNode) => {
+    const node = nodes.find((n) => n.id === elkNode.id)
+    if (node && elkNode.x !== undefined && elkNode.y !== undefined) {
       node.position = {
-        x: dagreNode.x - (dagreNode.width ?? NODE_WIDTH) / 2,
-        y: dagreNode.y - (dagreNode.height ?? NODE_HEIGHT) / 2,
+        x: elkNode.x,
+        y: elkNode.y,
       }
     }
   })
@@ -501,59 +524,48 @@ function GraphViewInner() {
     [toggleNodeCollapsed]
   )
 
-  // Memoize the layout calculation
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const { nodes, edges } = layoutNodes(
-      model.inputs,
-      model.decisions,
-      model.businessKnowledgeModels,
-      collapsedNodes,
-      handleToggleCollapse,
-      handleHover
-    )
-    return { initialNodes: nodes, initialEdges: edges }
-  }, [
-    model.inputs,
-    model.decisions,
-    model.businessKnowledgeModels,
-    collapsedNodes,
-    handleToggleCollapse,
-    handleHover,
-  ])
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-
-  // Update nodes when model or collapsed state changes
+  // Update nodes when model or collapsed state changes (async for ELK)
   useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = layoutNodes(
+    let cancelled = false
+
+    layoutNodesAsync(
       model.inputs,
       model.decisions,
       model.businessKnowledgeModels,
       collapsedNodes,
       handleToggleCollapse,
       handleHover
-    )
-    setNodes(newNodes)
-    setEdges(newEdges)
+    ).then(({ nodes: newNodes, edges: newEdges }) => {
+      if (cancelled) return
 
-    // Center on the toggled node after layout updates
-    if (lastToggledNodeRef.current) {
-      const toggledNode = newNodes.find(
-        (n) => n.id === lastToggledNodeRef.current
-      )
-      if (toggledNode) {
-        // Use setTimeout to ensure the layout has been applied
-        setTimeout(() => {
-          const zoom = getZoom()
-          setCenter(
-            toggledNode.position.x + NODE_WIDTH / 2,
-            toggledNode.position.y + NODE_HEIGHT / 2,
-            { zoom, duration: 300 }
-          )
-          lastToggledNodeRef.current = null
-        }, 50)
+      setNodes(newNodes)
+      setEdges(newEdges)
+
+      // Center on the toggled node after layout updates
+      if (lastToggledNodeRef.current) {
+        const toggledNode = newNodes.find(
+          (n) => n.id === lastToggledNodeRef.current
+        )
+        if (toggledNode) {
+          // Use setTimeout to ensure the layout has been applied
+          setTimeout(() => {
+            const zoom = getZoom()
+            setCenter(
+              toggledNode.position.x + NODE_WIDTH / 2,
+              toggledNode.position.y + NODE_HEIGHT / 2,
+              { zoom, duration: 300 }
+            )
+            lastToggledNodeRef.current = null
+          }, 50)
+        }
       }
+    })
+
+    return () => {
+      cancelled = true
     }
   }, [
     model.inputs,
