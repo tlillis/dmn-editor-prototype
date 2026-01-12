@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import {
@@ -5,17 +6,18 @@ import {
   type InputData,
   type Decision,
   type BusinessKnowledgeModel,
+  type Constant,
   type ExecutionContext,
-  type ExtractedConstant,
   createDMNModel,
   createInputData,
   createDecision,
   createBKM,
+  createConstant,
   generateId,
 } from '../types/dmn'
 
 // Selection state
-export type SelectionType = 'input' | 'decision' | 'bkm' | null
+export type SelectionType = 'input' | 'decision' | 'bkm' | 'constant' | null
 
 export interface Selection {
   type: SelectionType
@@ -30,9 +32,6 @@ interface EditorState {
   // UI state
   selection: Selection
   isDirty: boolean
-
-  // Constants extracted from the model
-  constants: ExtractedConstant[]
 
   // Execution state (for future engine integration)
   executionContext: ExecutionContext | null
@@ -71,13 +70,14 @@ interface EditorState {
   updateBKM: (id: string, updates: Partial<BusinessKnowledgeModel>) => void
   deleteBKM: (id: string) => void
 
+  // Actions - Constants
+  addConstant: (constant?: Partial<Constant>) => Constant
+  updateConstant: (id: string, updates: Partial<Constant>) => void
+  deleteConstant: (id: string) => void
+
   // Actions - Selection
   select: (type: SelectionType, id: string | null) => void
   clearSelection: () => void
-
-  // Actions - Constants
-  setConstants: (constants: ExtractedConstant[]) => void
-  updateConstant: (id: string, updates: Partial<ExtractedConstant>) => void
 
   // Actions - Execution
   setExecutionContext: (context: ExecutionContext | null) => void
@@ -93,7 +93,6 @@ export const useDMNStore = create<EditorState>()(
     model: createDMNModel(),
     selection: { type: null, id: null },
     isDirty: false,
-    constants: [],
     executionContext: null,
     isExecuting: false,
 
@@ -110,7 +109,6 @@ export const useDMNStore = create<EditorState>()(
         state.model = createDMNModel()
         state.isDirty = false
         state.selection = { type: null, id: null }
-        state.constants = []
         state.executionContext = null
       }),
 
@@ -308,16 +306,31 @@ export const useDMNStore = create<EditorState>()(
       }),
 
     // Constants
-    setConstants: (constants) =>
+    addConstant: (partial) => {
+      const constant = createConstant(partial)
       set((state) => {
-        state.constants = constants
-      }),
+        state.model.constants.push(constant)
+        state.isDirty = true
+        state.selection = { type: 'constant', id: constant.id }
+      })
+      return constant
+    },
 
     updateConstant: (id, updates) =>
       set((state) => {
-        const index = state.constants.findIndex((c) => c.id === id)
+        const index = state.model.constants.findIndex((c) => c.id === id)
         if (index !== -1) {
-          Object.assign(state.constants[index], updates)
+          Object.assign(state.model.constants[index], updates)
+          state.isDirty = true
+        }
+      }),
+
+    deleteConstant: (id) =>
+      set((state) => {
+        state.model.constants = state.model.constants.filter((c) => c.id !== id)
+        state.isDirty = true
+        if (state.selection.id === id) {
+          state.selection = { type: null, id: null }
         }
       }),
 
@@ -355,9 +368,38 @@ export const useSelectedElement = () => {
       return (
         model.businessKnowledgeModels.find((b) => b.id === selection.id) ?? null
       )
+    case 'constant':
+      return model.constants.find((c) => c.id === selection.id) ?? null
     default:
       return null
   }
+}
+
+// Get all element IDs that reference a constant by name in their expressions
+export const useConstantReferences = (constantName: string | null): Set<string> => {
+  const { model } = useDMNStore()
+
+  return useMemo(() => {
+    if (!constantName) return new Set<string>()
+
+    const referencingIds = new Set<string>()
+
+    // Check decisions
+    model.decisions.forEach((decision) => {
+      if (decision.expression.text.includes(constantName)) {
+        referencingIds.add(decision.id)
+      }
+    })
+
+    // Check BKMs
+    model.businessKnowledgeModels.forEach((bkm) => {
+      if ('text' in bkm.expression && bkm.expression.text.includes(constantName)) {
+        referencingIds.add(bkm.id)
+      }
+    })
+
+    return referencingIds
+  }, [constantName, model.decisions, model.businessKnowledgeModels])
 }
 
 // Get all dependencies for a decision (flattened)

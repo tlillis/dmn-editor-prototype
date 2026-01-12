@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import Dagre from '@dagrejs/dagre'
-import { useDMNStore } from '../../../store/dmn-store'
+import { useDMNStore, useConstantReferences } from '../../../store/dmn-store'
 import { Database, GitBranch, BookOpen } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type {
@@ -29,7 +29,7 @@ function InputNode({
   data,
   selected,
 }: {
-  data: { label: string; typeRef: string; element: InputData }
+  data: { label: string; typeRef: string; element: InputData; highlighted?: boolean }
   selected: boolean
 }) {
   const { select } = useDMNStore()
@@ -38,7 +38,8 @@ function InputNode({
     <div
       className={cn(
         'px-4 py-3 rounded-lg border-2 bg-white shadow-sm min-w-[150px]',
-        selected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-blue-300'
+        selected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-blue-300',
+        data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2'
       )}
       onClick={() => select('input', data.element.id)}
     >
@@ -63,7 +64,7 @@ function DecisionNode({
   data,
   selected,
 }: {
-  data: { label: string; typeRef: string; element: Decision }
+  data: { label: string; typeRef: string; element: Decision; highlighted?: boolean }
   selected: boolean
 }) {
   const { select } = useDMNStore()
@@ -72,7 +73,8 @@ function DecisionNode({
     <div
       className={cn(
         'px-4 py-3 rounded-lg border-2 bg-white shadow-sm min-w-[150px]',
-        selected ? 'border-green-500 ring-2 ring-green-200' : 'border-green-300'
+        selected ? 'border-green-500 ring-2 ring-green-200' : 'border-green-300',
+        data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2'
       )}
       onClick={() => select('decision', data.element.id)}
     >
@@ -103,6 +105,7 @@ function BKMNode({
     typeRef: string
     params: string[]
     element: BusinessKnowledgeModel
+    highlighted?: boolean
   }
   selected: boolean
 }) {
@@ -114,7 +117,8 @@ function BKMNode({
         'px-4 py-3 rounded-lg border-2 bg-white shadow-sm min-w-[150px]',
         selected
           ? 'border-purple-500 ring-2 ring-purple-200'
-          : 'border-purple-300'
+          : 'border-purple-300',
+        data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2'
       )}
       onClick={() => select('bkm', data.element.id)}
     >
@@ -273,6 +277,16 @@ function layoutNodes(
 export function GraphView() {
   const { model, selection } = useDMNStore()
 
+  // Get selected constant name for highlighting
+  const selectedConstantName = useMemo(() => {
+    if (selection.type !== 'constant' || !selection.id) return null
+    const constant = model.constants.find((c) => c.id === selection.id)
+    return constant?.name ?? null
+  }, [selection.type, selection.id, model.constants])
+
+  // Get IDs of elements that reference the selected constant
+  const highlightedIds = useConstantReferences(selectedConstantName)
+
   // Memoize the layout calculation
   const { initialNodes, initialEdges } = useMemo(() => {
     const { nodes, edges } = layoutNodes(
@@ -303,15 +317,19 @@ export function GraphView() {
     setEdges,
   ])
 
-  // Update selection state on nodes
+  // Update selection and highlighting state on nodes
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => ({
         ...node,
         selected: node.id === selection.id,
+        data: {
+          ...node.data,
+          highlighted: highlightedIds.has(node.id),
+        },
       }))
     )
-  }, [selection.id, setNodes])
+  }, [selection.id, highlightedIds, setNodes])
 
   const onNodeClick = useCallback((_: React.MouseEvent, _node: Node) => {
     // Selection is handled in the node components

@@ -5,6 +5,7 @@ import {
   createRoute,
 } from '@tanstack/react-router'
 import { EditorPage } from './features/editor'
+import { ConstantsPage } from './features/constants'
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -16,7 +17,13 @@ export const homeRoute = createRoute({
   component: EditorPage,
 })
 
-export const routeTree = rootRoute.addChildren([homeRoute])
+export const constantsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/constants',
+  component: ConstantsPage,
+})
+
+export const routeTree = rootRoute.addChildren([homeRoute, constantsRoute])
 
 export const router = new Router({ routeTree })
 

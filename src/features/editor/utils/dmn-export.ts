@@ -5,6 +5,7 @@ import type {
   InputData,
   Context,
   LiteralExpression,
+  Constant,
 } from '../../../types/dmn'
 
 // Escape XML special characters
@@ -48,6 +49,25 @@ ${indent}  </contextEntry>`
   return `${indent}<context>
 ${entries}
 ${indent}</context>`
+}
+
+// Generate XML for a Constant (exported as a BKM with no parameters)
+function generateConstantXml(constant: Constant): string {
+  const typeRef = constant.type === 'number' ? 'number' : constant.type === 'boolean' ? 'boolean' : 'string'
+  const valueText = constant.type === 'string' ? `"${escapeXml(String(constant.value))}"` : String(constant.value)
+
+  const descriptionAttr = constant.description
+    ? `\n    <description>${escapeXml(constant.description)}</description>`
+    : ''
+
+  return `  <businessKnowledgeModel id="${escapeXml(constant.id)}" name="${escapeXml(constant.name)}">${descriptionAttr}
+    <variable name="${escapeXml(constant.name)}" typeRef="${typeRef}"/>
+    <encapsulatedLogic>
+      <literalExpression>
+        <text>${valueText}</text>
+      </literalExpression>
+    </encapsulatedLogic>
+  </businessKnowledgeModel>`
 }
 
 // Generate XML for a BusinessKnowledgeModel
@@ -112,8 +132,12 @@ ${generateLiteralExpressionXml(decision.expression)}
 // Main export function
 export function exportToDMN(model: DMNModel): string {
   const inputs = model.inputs.map(generateInputDataXml).join('\n\n')
+  const constants = model.constants.map(generateConstantXml).join('\n\n')
   const bkms = model.businessKnowledgeModels.map(generateBKMXml).join('\n\n')
   const decisions = model.decisions.map(generateDecisionXml).join('\n\n')
+
+  // Combine constants and BKMs (constants are exported as BKMs for FEEL compatibility)
+  const allBkms = [constants, bkms].filter((s) => s).join('\n\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
@@ -128,8 +152,8 @@ export function exportToDMN(model: DMNModel): string {
   <!-- INPUT DATA -->
 ${inputs}
 
-  <!-- BUSINESS KNOWLEDGE MODELS -->
-${bkms}
+  <!-- BUSINESS KNOWLEDGE MODELS (includes constants) -->
+${allBkms}
 
   <!-- DECISIONS -->
 ${decisions}

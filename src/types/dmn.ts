@@ -86,6 +86,16 @@ export interface Decision {
   expression: LiteralExpression
 }
 
+// Constant - a named value that can be referenced in expressions
+export interface Constant {
+  id: string
+  name: string // Variable name to use in expressions (e.g., SHELTER_CAP)
+  value: number | string | boolean
+  type: 'number' | 'string' | 'boolean'
+  description?: string
+  category?: string // For grouping (e.g., "Income Limits", "Deductions")
+}
+
 // The complete DMN Model
 export interface DMNModel {
   id: string
@@ -95,22 +105,7 @@ export interface DMNModel {
   inputs: InputData[]
   decisions: Decision[]
   businessKnowledgeModels: BusinessKnowledgeModel[]
-}
-
-// Extracted constant from expressions (for the constants editor)
-export interface ExtractedConstant {
-  id: string
-  name: string
-  value: string | number | boolean
-  type: DMNDataType
-  description?: string
-  category?: string
-  usedIn: string[] // IDs of decisions/BKMs that use this constant
-}
-
-// Constants collection
-export interface ConstantsCollection {
-  constants: ExtractedConstant[]
+  constants: Constant[]
 }
 
 // For React Flow integration
@@ -138,22 +133,22 @@ export interface ExecutionContext {
 }
 
 // Helper type guards
-export function isDecision(
-  element: InputData | Decision | BusinessKnowledgeModel
-): element is Decision {
+type DMNElement = InputData | Decision | BusinessKnowledgeModel | Constant
+
+export function isConstant(element: DMNElement): element is Constant {
+  return 'type' in element && 'value' in element
+}
+
+export function isDecision(element: DMNElement): element is Decision {
   return 'informationRequirements' in element
 }
 
-export function isBKM(
-  element: InputData | Decision | BusinessKnowledgeModel
-): element is BusinessKnowledgeModel {
+export function isBKM(element: DMNElement): element is BusinessKnowledgeModel {
   return 'parameters' in element
 }
 
-export function isInputData(
-  element: InputData | Decision | BusinessKnowledgeModel
-): element is InputData {
-  return !isDecision(element) && !isBKM(element)
+export function isInputData(element: DMNElement): element is InputData {
+  return !isDecision(element) && !isBKM(element) && !isConstant(element)
 }
 
 // Generate a valid NCName ID (XML NCName can't start with a digit)
@@ -211,6 +206,16 @@ export function createBKM(
   }
 }
 
+export function createConstant(partial?: Partial<Constant>): Constant {
+  return {
+    id: generateId(),
+    name: 'NEW_CONSTANT',
+    value: 0,
+    type: 'number',
+    ...partial,
+  }
+}
+
 export function createDMNModel(partial?: Partial<DMNModel>): DMNModel {
   return {
     id: generateId(),
@@ -219,6 +224,7 @@ export function createDMNModel(partial?: Partial<DMNModel>): DMNModel {
     inputs: [],
     decisions: [],
     businessKnowledgeModels: [],
+    constants: [],
     ...partial,
   }
 }

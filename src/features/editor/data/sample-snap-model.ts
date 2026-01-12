@@ -140,6 +140,64 @@ else 1756 + (size - 8) * 220`,
       expressionType: 'literal',
     },
   ],
+  constants: [
+    {
+      id: '_const_resource_limit_standard',
+      name: 'RESOURCE_LIMIT_STANDARD',
+      value: 3000,
+      type: 'number',
+      description: 'Standard resource limit for most households',
+      category: 'Resource Limits',
+    },
+    {
+      id: '_const_resource_limit_elderly',
+      name: 'RESOURCE_LIMIT_ELDERLY_DISABLED',
+      value: 4500,
+      type: 'number',
+      description: 'Resource limit for households with elderly or disabled members',
+      category: 'Resource Limits',
+    },
+    {
+      id: '_const_medical_expense_threshold',
+      name: 'MEDICAL_EXPENSE_THRESHOLD',
+      value: 35,
+      type: 'number',
+      description: 'Monthly medical expense threshold before deduction applies',
+      category: 'Deductions',
+    },
+    {
+      id: '_const_homeless_shelter_deduction',
+      name: 'HOMELESS_SHELTER_DEDUCTION',
+      value: 198.99,
+      type: 'number',
+      description: 'Standard utility allowance for homeless households',
+      category: 'Deductions',
+    },
+    {
+      id: '_const_shelter_deduction_cap',
+      name: 'SHELTER_DEDUCTION_CAP',
+      value: 672,
+      type: 'number',
+      description: 'Maximum shelter deduction for non-elderly/disabled households',
+      category: 'Deductions',
+    },
+    {
+      id: '_const_earned_income_deduction_rate',
+      name: 'EARNED_INCOME_DEDUCTION_RATE',
+      value: 0.20,
+      type: 'number',
+      description: 'Percentage of earned income that is deducted (20%)',
+      category: 'Deductions',
+    },
+    {
+      id: '_const_benefit_reduction_rate',
+      name: 'BENEFIT_REDUCTION_RATE',
+      value: 0.30,
+      type: 'number',
+      description: 'Rate at which net income reduces benefit amount (30%)',
+      category: 'Benefit Calculation',
+    },
+  ],
   decisions: [
     {
       id: 'grossIncomeTest',
@@ -194,7 +252,7 @@ else Gross Monthly Income <= FPL Thresholds(Household Size).grossLimit`,
       knowledgeRequirements: [],
       expression: {
         id: 'eid-expr',
-        text: 'Earned Income * 0.20',
+        text: 'Earned Income * EARNED_INCOME_DEDUCTION_RATE',
         typeRef: 'number',
       },
     },
@@ -213,8 +271,8 @@ else Gross Monthly Income <= FPL Thresholds(Household Size).grossLimit`,
       knowledgeRequirements: [],
       expression: {
         id: 'md-expr',
-        text: `if Has Elderly Or Disabled Member and Medical Expenses > 35
-then Medical Expenses - 35
+        text: `if Has Elderly Or Disabled Member and Medical Expenses > MEDICAL_EXPENSE_THRESHOLD
+then Medical Expenses - MEDICAL_EXPENSE_THRESHOLD
 else 0`,
         typeRef: 'number',
       },
@@ -234,8 +292,8 @@ else 0`,
       knowledgeRequirements: [],
       expression: {
         id: 'rt-expr',
-        text: `if Has Elderly Or Disabled Member then Countable Resources <= 4500
-else Countable Resources <= 3000`,
+        text: `if Has Elderly Or Disabled Member then Countable Resources <= RESOURCE_LIMIT_ELDERLY_DISABLED
+else Countable Resources <= RESOURCE_LIMIT_STANDARD`,
         typeRef: 'boolean',
       },
     },
@@ -297,9 +355,9 @@ else Countable Resources <= 3000`,
       knowledgeRequirements: [],
       expression: {
         id: 'esd-expr',
-        text: `if Is Homeless then 198.99
+        text: `if Is Homeless then HOMELESS_SHELTER_DEDUCTION
 else if Has Elderly Or Disabled Member then max(0, Shelter Costs - (Adjusted Income Before Shelter * 0.5))
-else min(672, max(0, Shelter Costs - (Adjusted Income Before Shelter * 0.5)))`,
+else min(SHELTER_DEDUCTION_CAP, max(0, Shelter Costs - (Adjusted Income Before Shelter * 0.5)))`,
         typeRef: 'number',
       },
     },
@@ -379,7 +437,7 @@ else min(672, max(0, Shelter Costs - (Adjusted Income Before Shelter * 0.5)))`,
       expression: {
         id: 'ba-expr',
         text: `if not(SNAP Eligible) then 0
-else max(0, Max Allotment Lookup(Household Size) - (Net Monthly Income * 0.3))`,
+else max(0, Max Allotment Lookup(Household Size) - (Net Monthly Income * BENEFIT_REDUCTION_RATE))`,
         typeRef: 'number',
       },
     },
