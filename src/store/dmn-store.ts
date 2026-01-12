@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { enableMapSet } from 'immer'
 import {
   type DMNModel,
   type InputData,
@@ -32,6 +33,7 @@ interface EditorState {
   // UI state
   selection: Selection
   isDirty: boolean
+  collapsedNodes: Set<string>
 
   // Execution state (for future engine integration)
   executionContext: ExecutionContext | null
@@ -79,6 +81,11 @@ interface EditorState {
   select: (type: SelectionType, id: string | null) => void
   clearSelection: () => void
 
+  // Actions - Graph collapse/expand
+  toggleNodeCollapsed: (nodeId: string) => void
+  expandAllNodes: () => void
+  collapseAllNodes: () => void
+
   // Actions - Execution
   setExecutionContext: (context: ExecutionContext | null) => void
   setIsExecuting: (isExecuting: boolean) => void
@@ -87,12 +94,16 @@ interface EditorState {
   markClean: () => void
 }
 
+// Enable Immer MapSet plugin for Set/Map support
+enableMapSet()
+
 export const useDMNStore = create<EditorState>()(
   immer((set) => ({
     // Initial state
     model: createDMNModel(),
     selection: { type: null, id: null },
     isDirty: false,
+    collapsedNodes: new Set<string>(),
     executionContext: null,
     isExecuting: false,
 
@@ -102,6 +113,7 @@ export const useDMNStore = create<EditorState>()(
         state.model = model
         state.isDirty = false
         state.selection = { type: null, id: null }
+        state.collapsedNodes = new Set<string>()
       }),
 
     newModel: () =>
@@ -109,6 +121,7 @@ export const useDMNStore = create<EditorState>()(
         state.model = createDMNModel()
         state.isDirty = false
         state.selection = { type: null, id: null }
+        state.collapsedNodes = new Set<string>()
         state.executionContext = null
       }),
 
@@ -305,6 +318,38 @@ export const useDMNStore = create<EditorState>()(
         state.selection = { type: null, id: null }
       }),
 
+    // Graph collapse/expand
+    toggleNodeCollapsed: (nodeId) =>
+      set((state) => {
+        const newCollapsed = new Set(state.collapsedNodes)
+        if (newCollapsed.has(nodeId)) {
+          newCollapsed.delete(nodeId)
+        } else {
+          newCollapsed.add(nodeId)
+        }
+        state.collapsedNodes = newCollapsed
+      }),
+
+    expandAllNodes: () =>
+      set((state) => {
+        state.collapsedNodes = new Set<string>()
+      }),
+
+    collapseAllNodes: () =>
+      set((state) => {
+        // Collapse all decisions except terminal ones (those with no dependents)
+        const decisionsWithDependents = new Set<string>()
+        state.model.decisions.forEach((d) => {
+          d.informationRequirements
+            .filter((r) => r.type === 'decision')
+            .forEach((r) => decisionsWithDependents.add(r.href))
+        })
+        const nonTerminalDecisions = state.model.decisions
+          .filter((d) => decisionsWithDependents.has(d.id))
+          .map((d) => d.id)
+        state.collapsedNodes = new Set(nonTerminalDecisions)
+      }),
+
     // Constants
     addConstant: (partial) => {
       const constant = createConstant(partial)
@@ -376,7 +421,9 @@ export const useSelectedElement = () => {
 }
 
 // Get all element IDs that reference a constant by name in their expressions
-export const useConstantReferences = (constantName: string | null): Set<string> => {
+export const useConstantReferences = (
+  constantName: string | null
+): Set<string> => {
   const { model } = useDMNStore()
 
   return useMemo(() => {
@@ -393,7 +440,10 @@ export const useConstantReferences = (constantName: string | null): Set<string> 
 
     // Check BKMs
     model.businessKnowledgeModels.forEach((bkm) => {
-      if ('text' in bkm.expression && bkm.expression.text.includes(constantName)) {
+      if (
+        'text' in bkm.expression &&
+        bkm.expression.text.includes(constantName)
+      ) {
         referencingIds.add(bkm.id)
       }
     })

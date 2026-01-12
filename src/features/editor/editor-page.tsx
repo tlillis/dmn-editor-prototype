@@ -4,7 +4,12 @@ import { PropertiesPanel } from './components/properties-panel'
 import { GraphView } from './components/graph-view'
 import { EditorToolbar } from './components/editor-toolbar'
 import { ConstantsEditor } from './components/constants-editor'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '../../components/ui/tabs'
 import { FolderTree, Hash } from 'lucide-react'
 
 export function EditorPage() {

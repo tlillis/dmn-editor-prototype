@@ -53,8 +53,16 @@ ${indent}</context>`
 
 // Generate XML for a Constant (exported as a BKM with no parameters)
 function generateConstantXml(constant: Constant): string {
-  const typeRef = constant.type === 'number' ? 'number' : constant.type === 'boolean' ? 'boolean' : 'string'
-  const valueText = constant.type === 'string' ? `"${escapeXml(String(constant.value))}"` : String(constant.value)
+  const typeRef =
+    constant.type === 'number'
+      ? 'number'
+      : constant.type === 'boolean'
+        ? 'boolean'
+        : 'string'
+  const valueText =
+    constant.type === 'string'
+      ? `"${escapeXml(String(constant.value))}"`
+      : String(constant.value)
 
   const descriptionAttr = constant.description
     ? `\n    <description>${escapeXml(constant.description)}</description>`

@@ -57,7 +57,11 @@ function ConstantCard({
   }
 
   const TypeIcon =
-    constant.type === 'number' ? Hash : constant.type === 'boolean' ? ToggleLeft : Type
+    constant.type === 'number'
+      ? Hash
+      : constant.type === 'boolean'
+        ? ToggleLeft
+        : Type
 
   return (
     <Card
@@ -81,7 +85,9 @@ function ConstantCard({
       <CardHeader className="py-3 px-4 pr-10">
         <div className="flex items-start gap-2">
           <TypeIcon className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-          <CardTitle className="text-sm font-mono break-all">{constant.name}</CardTitle>
+          <CardTitle className="text-sm font-mono break-all">
+            {constant.name}
+          </CardTitle>
         </div>
         {constant.description && (
           <CardDescription className="text-xs mt-1 line-clamp-2">

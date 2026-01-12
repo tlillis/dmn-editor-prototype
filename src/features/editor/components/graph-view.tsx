@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import {
   ReactFlow,
   Background,
@@ -6,18 +6,30 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
   type NodeTypes,
   MarkerType,
   Position,
   Handle,
+  Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import Dagre from '@dagrejs/dagre'
 import { useDMNStore, useConstantReferences } from '../../../store/dmn-store'
-import { Database, GitBranch, BookOpen } from 'lucide-react'
+import {
+  Database,
+  GitBranch,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  Maximize2,
+  Minimize2,
+} from 'lucide-react'
 import { cn } from '../../../lib/utils'
+import { Button } from '../../../components/ui/button'
 import type {
   InputData,
   Decision,
@@ -29,7 +41,13 @@ function InputNode({
   data,
   selected,
 }: {
-  data: { label: string; typeRef: string; element: InputData; highlighted?: boolean }
+  data: {
+    label: string
+    typeRef: string
+    element: InputData
+    highlighted?: boolean
+    onHover?: (id: string | null) => void
+  }
   selected: boolean
 }) {
   const { select } = useDMNStore()
@@ -42,6 +60,8 @@ function InputNode({
         data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2'
       )}
       onClick={() => select('input', data.element.id)}
+      onMouseEnter={() => data.onHover?.(data.element.id)}
+      onMouseLeave={() => data.onHover?.(null)}
     >
       <Handle
         type="source"
@@ -64,7 +84,16 @@ function DecisionNode({
   data,
   selected,
 }: {
-  data: { label: string; typeRef: string; element: Decision; highlighted?: boolean }
+  data: {
+    label: string
+    typeRef: string
+    element: Decision
+    highlighted?: boolean
+    isCollapsed?: boolean
+    hasHiddenDeps?: boolean
+    onToggleCollapse?: () => void
+    onHover?: (id: string | null) => void
+  }
   selected: boolean
 }) {
   const { select } = useDMNStore()
@@ -72,11 +101,15 @@ function DecisionNode({
   return (
     <div
       className={cn(
-        'px-4 py-3 rounded-lg border-2 bg-white shadow-sm min-w-[150px]',
-        selected ? 'border-green-500 ring-2 ring-green-200' : 'border-green-300',
+        'px-4 py-3 rounded-lg border-2 bg-white shadow-sm min-w-[150px] relative',
+        selected
+          ? 'border-green-500 ring-2 ring-green-200'
+          : 'border-green-300',
         data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2'
       )}
       onClick={() => select('decision', data.element.id)}
+      onMouseEnter={() => data.onHover?.(data.element.id)}
+      onMouseLeave={() => data.onHover?.(null)}
     >
       <Handle type="target" position={Position.Top} className="!bg-green-500" />
       <Handle
@@ -85,12 +118,32 @@ function DecisionNode({
         className="!bg-green-500"
       />
       <div className="flex items-center gap-2">
+        {data.hasHiddenDeps && (
+          <button
+            className="p-0.5 hover:bg-gray-100 rounded"
+            onClick={(e) => {
+              e.stopPropagation()
+              data.onToggleCollapse?.()
+            }}
+          >
+            {data.isCollapsed ? (
+              <ChevronRight className="h-4 w-4 text-gray-500" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-gray-500" />
+            )}
+          </button>
+        )}
         <GitBranch className="h-4 w-4 text-green-500" />
         <div>
           <div className="font-medium text-sm">{data.label}</div>
           <div className="text-xs text-muted-foreground">{data.typeRef}</div>
         </div>
       </div>
+      {data.isCollapsed && data.hasHiddenDeps && (
+        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gray-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+          ...
+        </div>
+      )}
     </div>
   )
 }
@@ -106,6 +159,7 @@ function BKMNode({
     params: string[]
     element: BusinessKnowledgeModel
     highlighted?: boolean
+    onHover?: (id: string | null) => void
   }
   selected: boolean
 }) {
@@ -121,6 +175,8 @@ function BKMNode({
         data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2'
       )}
       onClick={() => select('bkm', data.element.id)}
+      onMouseEnter={() => data.onHover?.(data.element.id)}
+      onMouseLeave={() => data.onHover?.(null)}
     >
       <Handle
         type="source"
@@ -150,14 +206,129 @@ const nodeTypes: NodeTypes = {
 const NODE_WIDTH = 180
 const NODE_HEIGHT = 60
 
+// Calculate which nodes should be visible based on collapsed state
+function getVisibleElements(
+  inputs: InputData[],
+  decisions: Decision[],
+  bkms: BusinessKnowledgeModel[],
+  collapsedNodes: Set<string>
+): {
+  visibleInputs: InputData[]
+  visibleDecisions: Decision[]
+  visibleBkms: BusinessKnowledgeModel[]
+  hiddenDeps: Map<string, Set<string>> // Map of node ID to its hidden dependency IDs
+} {
+  // Track hidden dependencies for each collapsed node
+  const hiddenDeps = new Map<string, Set<string>>()
+
+  // For each collapsed decision, mark its dependencies as potentially hidden
+  const potentiallyHidden = new Set<string>()
+
+  collapsedNodes.forEach((collapsedId) => {
+    const decision = decisions.find((d) => d.id === collapsedId)
+    if (!decision) return
+
+    const deps = new Set<string>()
+
+    // Get all upstream dependencies recursively
+    const getUpstreamDeps = (decId: string, visited: Set<string>) => {
+      if (visited.has(decId)) return
+      visited.add(decId)
+
+      const dec = decisions.find((d) => d.id === decId)
+      if (!dec) return
+
+      dec.informationRequirements.forEach((req) => {
+        deps.add(req.href)
+        potentiallyHidden.add(req.href)
+        if (req.type === 'decision') {
+          getUpstreamDeps(req.href, visited)
+        }
+      })
+      dec.knowledgeRequirements.forEach((req) => {
+        deps.add(req.href)
+        potentiallyHidden.add(req.href)
+      })
+    }
+
+    getUpstreamDeps(collapsedId, new Set())
+    hiddenDeps.set(collapsedId, deps)
+  })
+
+  // Now determine which potentially hidden nodes are actually hidden
+  // A node is hidden only if ALL paths to it go through collapsed nodes
+  const actuallyVisible = new Set<string>()
+
+  // Find terminal decisions (those not depended on by others)
+  const dependedOn = new Set<string>()
+  decisions.forEach((d) => {
+    d.informationRequirements
+      .filter((r) => r.type === 'decision')
+      .forEach((r) => dependedOn.add(r.href))
+  })
+
+  const terminalDecisions = decisions.filter((d) => !dependedOn.has(d.id))
+
+  // Walk from terminal decisions and mark visible nodes
+  const markVisible = (
+    nodeId: string,
+    nodeType: 'decision' | 'input' | 'bkm',
+    fromCollapsed: boolean
+  ) => {
+    if (fromCollapsed) return // Don't traverse past collapsed nodes
+
+    actuallyVisible.add(nodeId)
+
+    if (nodeType === 'decision') {
+      const dec = decisions.find((d) => d.id === nodeId)
+      if (!dec) return
+
+      const isCollapsed = collapsedNodes.has(nodeId)
+
+      dec.informationRequirements.forEach((req) => {
+        markVisible(req.href, req.type, isCollapsed)
+      })
+      dec.knowledgeRequirements.forEach((req) => {
+        markVisible(req.href, 'bkm', isCollapsed)
+      })
+    }
+  }
+
+  terminalDecisions.forEach((d) => {
+    markVisible(d.id, 'decision', false)
+  })
+
+  // Filter to only visible elements
+  const visibleInputs = inputs.filter((i) => actuallyVisible.has(i.id))
+  const visibleDecisions = decisions.filter((d) => actuallyVisible.has(d.id))
+  const visibleBkms = bkms.filter((b) => actuallyVisible.has(b.id))
+
+  return { visibleInputs, visibleDecisions, visibleBkms, hiddenDeps }
+}
+
 // Use Dagre for automatic hierarchical layout
 function layoutNodes(
   inputs: InputData[],
   decisions: Decision[],
-  bkms: BusinessKnowledgeModel[]
+  bkms: BusinessKnowledgeModel[],
+  collapsedNodes: Set<string>,
+  toggleCollapse: (id: string) => void,
+  onHover: (id: string | null) => void
 ): { nodes: Node[]; edges: Edge[] } {
+  const { visibleInputs, visibleDecisions, visibleBkms } = getVisibleElements(
+    inputs,
+    decisions,
+    bkms,
+    collapsedNodes
+  )
+
   const nodes: Node[] = []
   const edges: Edge[] = []
+  const visibleIds = new Set([
+    ...visibleInputs.map((i) => i.id),
+    ...visibleDecisions.map((d) => d.id),
+    ...visibleBkms.map((b) => b.id),
+  ])
 
   // Create dagre graph
   const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}))
@@ -170,52 +341,65 @@ function layoutNodes(
   })
 
   // Add input nodes
-  inputs.forEach((input) => {
+  visibleInputs.forEach((input) => {
     g.setNode(input.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
     nodes.push({
       id: input.id,
       type: 'input',
-      position: { x: 0, y: 0 }, // Will be set by dagre
+      position: { x: 0, y: 0 },
       data: {
         label: input.name,
         typeRef: input.typeRef,
         element: input,
+        onHover,
       },
     })
   })
 
   // Add BKM nodes
-  bkms.forEach((bkm) => {
+  visibleBkms.forEach((bkm) => {
     g.setNode(bkm.id, { width: NODE_WIDTH + 40, height: NODE_HEIGHT })
     nodes.push({
       id: bkm.id,
       type: 'bkm',
-      position: { x: 0, y: 0 }, // Will be set by dagre
+      position: { x: 0, y: 0 },
       data: {
         label: bkm.name,
         typeRef: bkm.variable.typeRef,
         params: bkm.parameters.map((p) => p.name),
         element: bkm,
+        onHover,
       },
     })
   })
 
   // Add decision nodes and their edges
-  decisions.forEach((decision) => {
+  visibleDecisions.forEach((decision) => {
+    const isCollapsed = collapsedNodes.has(decision.id)
+    const hasHiddenDeps =
+      decision.informationRequirements.length > 0 ||
+      decision.knowledgeRequirements.length > 0
+
     g.setNode(decision.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
     nodes.push({
       id: decision.id,
       type: 'decision',
-      position: { x: 0, y: 0 }, // Will be set by dagre
+      position: { x: 0, y: 0 },
       data: {
         label: decision.name,
         typeRef: decision.variable.typeRef,
         element: decision,
+        isCollapsed,
+        hasHiddenDeps,
+        onToggleCollapse: () => toggleCollapse(decision.id),
+        onHover,
       },
     })
 
-    // Add edges for information requirements
+    // Add edges only to visible nodes
     decision.informationRequirements.forEach((req) => {
+      if (!visibleIds.has(req.href)) return
+
       g.setEdge(req.href, decision.id)
       edges.push({
         id: `${req.href}-${decision.id}`,
@@ -236,6 +420,8 @@ function layoutNodes(
 
     // Add edges for knowledge requirements (dashed)
     decision.knowledgeRequirements.forEach((req) => {
+      if (!visibleIds.has(req.href)) return
+
       g.setEdge(req.href, decision.id)
       edges.push({
         id: `${req.href}-${decision.id}-bkm`,
@@ -263,7 +449,6 @@ function layoutNodes(
   nodes.forEach((node) => {
     const dagreNode = g.node(node.id)
     if (dagreNode) {
-      // Dagre returns center positions, adjust to top-left for React Flow
       node.position = {
         x: dagreNode.x - (dagreNode.width ?? NODE_WIDTH) / 2,
         y: dagreNode.y - (dagreNode.height ?? NODE_HEIGHT) / 2,
@@ -274,8 +459,23 @@ function layoutNodes(
   return { nodes, edges }
 }
 
-export function GraphView() {
-  const { model, selection } = useDMNStore()
+// Inner component that uses useReactFlow (must be inside ReactFlowProvider)
+function GraphViewInner() {
+  const {
+    model,
+    selection,
+    collapsedNodes,
+    toggleNodeCollapsed,
+    expandAllNodes,
+    collapseAllNodes,
+  } = useDMNStore()
+  const { setCenter, getZoom } = useReactFlow()
+
+  // Track hovered node for edge highlighting
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+
+  // Track which node was just toggled for centering
+  const lastToggledNodeRef = useRef<string | null>(null)
 
   // Get selected constant name for highlighting
   const selectedConstantName = useMemo(() => {
@@ -287,34 +487,85 @@ export function GraphView() {
   // Get IDs of elements that reference the selected constant
   const highlightedIds = useConstantReferences(selectedConstantName)
 
+  // Handle hover callback
+  const handleHover = useCallback((id: string | null) => {
+    setHoveredNodeId(id)
+  }, [])
+
+  // Handle toggle collapse with centering
+  const handleToggleCollapse = useCallback(
+    (nodeId: string) => {
+      lastToggledNodeRef.current = nodeId
+      toggleNodeCollapsed(nodeId)
+    },
+    [toggleNodeCollapsed]
+  )
+
   // Memoize the layout calculation
   const { initialNodes, initialEdges } = useMemo(() => {
     const { nodes, edges } = layoutNodes(
       model.inputs,
       model.decisions,
-      model.businessKnowledgeModels
+      model.businessKnowledgeModels,
+      collapsedNodes,
+      handleToggleCollapse,
+      handleHover
     )
     return { initialNodes: nodes, initialEdges: edges }
-  }, [model.inputs, model.decisions, model.businessKnowledgeModels])
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-
-  // Update nodes when model changes
-  useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = layoutNodes(
-      model.inputs,
-      model.decisions,
-      model.businessKnowledgeModels
-    )
-    setNodes(newNodes)
-    setEdges(newEdges)
   }, [
     model.inputs,
     model.decisions,
     model.businessKnowledgeModels,
+    collapsedNodes,
+    handleToggleCollapse,
+    handleHover,
+  ])
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+
+  // Update nodes when model or collapsed state changes
+  useEffect(() => {
+    const { nodes: newNodes, edges: newEdges } = layoutNodes(
+      model.inputs,
+      model.decisions,
+      model.businessKnowledgeModels,
+      collapsedNodes,
+      handleToggleCollapse,
+      handleHover
+    )
+    setNodes(newNodes)
+    setEdges(newEdges)
+
+    // Center on the toggled node after layout updates
+    if (lastToggledNodeRef.current) {
+      const toggledNode = newNodes.find(
+        (n) => n.id === lastToggledNodeRef.current
+      )
+      if (toggledNode) {
+        // Use setTimeout to ensure the layout has been applied
+        setTimeout(() => {
+          const zoom = getZoom()
+          setCenter(
+            toggledNode.position.x + NODE_WIDTH / 2,
+            toggledNode.position.y + NODE_HEIGHT / 2,
+            { zoom, duration: 300 }
+          )
+          lastToggledNodeRef.current = null
+        }, 50)
+      }
+    }
+  }, [
+    model.inputs,
+    model.decisions,
+    model.businessKnowledgeModels,
+    collapsedNodes,
+    handleToggleCollapse,
+    handleHover,
     setNodes,
     setEdges,
+    setCenter,
+    getZoom,
   ])
 
   // Update selection and highlighting state on nodes
@@ -331,47 +582,113 @@ export function GraphView() {
     )
   }, [selection.id, highlightedIds, setNodes])
 
+  // Update edge styles based on hovered node
+  useEffect(() => {
+    if (!hoveredNodeId) {
+      // Reset all edges to full opacity
+      setEdges((eds) =>
+        eds.map((edge) => ({
+          ...edge,
+          style: {
+            ...edge.style,
+            opacity: 1,
+          },
+          animated: false,
+        }))
+      )
+    } else {
+      // Dim edges not connected to hovered node, highlight connected ones
+      setEdges((eds) =>
+        eds.map((edge) => {
+          const isConnected =
+            edge.source === hoveredNodeId || edge.target === hoveredNodeId
+          return {
+            ...edge,
+            style: {
+              ...edge.style,
+              opacity: isConnected ? 1 : 0.15,
+              strokeWidth: isConnected ? 3 : 2,
+            },
+            animated: isConnected,
+          }
+        })
+      )
+    }
+  }, [hoveredNodeId, setEdges])
+
   const onNodeClick = useCallback((_: React.MouseEvent, _node: Node) => {
     // Selection is handled in the node components
   }, [])
 
+  const hasCollapsedNodes = collapsedNodes.size > 0
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onNodeClick={onNodeClick}
+      nodeTypes={nodeTypes}
+      fitView
+      fitViewOptions={{ padding: 0.2 }}
+      minZoom={0.1}
+      maxZoom={2}
+      panOnScroll
+      selectionOnDrag
+      defaultEdgeOptions={{
+        type: 'smoothstep',
+      }}
+    >
+      <Background color="#e5e7eb" gap={16} />
+      <Controls />
+      <MiniMap
+        nodeColor={(node) => {
+          switch (node.type) {
+            case 'input':
+              return '#3b82f6'
+            case 'decision':
+              return '#22c55e'
+            case 'bkm':
+              return '#a855f7'
+            default:
+              return '#6b7280'
+          }
+        }}
+        maskColor="rgba(0, 0, 0, 0.1)"
+      />
+      <Panel position="top-right" className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={expandAllNodes}
+          disabled={!hasCollapsedNodes}
+          className="bg-white"
+        >
+          <Maximize2 className="h-4 w-4 mr-1" />
+          Expand All
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={collapseAllNodes}
+          className="bg-white"
+        >
+          <Minimize2 className="h-4 w-4 mr-1" />
+          Collapse All
+        </Button>
+      </Panel>
+    </ReactFlow>
+  )
+}
+
+// Wrapper component that provides ReactFlowProvider
+export function GraphView() {
   return (
     <div className="h-full w-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.1}
-        maxZoom={2}
-        panOnScroll
-        selectionOnDrag
-        defaultEdgeOptions={{
-          type: 'smoothstep',
-        }}
-      >
-        <Background color="#e5e7eb" gap={16} />
-        <Controls />
-        <MiniMap
-          nodeColor={(node) => {
-            switch (node.type) {
-              case 'input':
-                return '#3b82f6'
-              case 'decision':
-                return '#22c55e'
-              case 'bkm':
-                return '#a855f7'
-              default:
-                return '#6b7280'
-            }
-          }}
-          maskColor="rgba(0, 0, 0, 0.1)"
-        />
-      </ReactFlow>
+      <ReactFlowProvider>
+        <GraphViewInner />
+      </ReactFlowProvider>
     </div>
   )
 }
