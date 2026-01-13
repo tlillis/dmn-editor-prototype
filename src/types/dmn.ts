@@ -106,6 +106,7 @@ export interface DMNModel {
   decisions: Decision[]
   businessKnowledgeModels: BusinessKnowledgeModel[]
   constants: Constant[]
+  testCases: TestCase[]
 }
 
 // For React Flow integration
@@ -130,6 +131,55 @@ export interface ExecutionResult {
 export interface ExecutionContext {
   inputs: Record<string, unknown>
   results: Record<string, ExecutionResult>
+}
+
+// Test Case types
+export interface TestExpectation {
+  nodeId: string // Decision ID to check
+  nodeName: string // For display (in case node is renamed/deleted)
+  expectedValue: unknown
+}
+
+export interface TestCase {
+  id: string
+  name: string
+  description?: string
+  inputs: Record<string, unknown> // Input ID → value
+  expectations: TestExpectation[]
+  createdAt: number
+  updatedAt: number
+}
+
+export type TestCaseStatus = 'pending' | 'running' | 'passed' | 'failed'
+
+export interface TestExpectationResult {
+  nodeId: string
+  nodeName: string
+  expectedValue: unknown
+  actualValue: unknown
+  passed: boolean
+  error?: string // e.g., "Node not found" or "Node evaluation failed"
+}
+
+export interface TestCaseResult {
+  testCaseId: string
+  status: TestCaseStatus
+  expectationResults: TestExpectationResult[]
+  executionTime: number // ms
+  runAt: number
+}
+
+export function createTestCase(partial?: Partial<TestCase>): TestCase {
+  const now = Date.now()
+  return {
+    id: generateId(),
+    name: 'New Test Case',
+    inputs: {},
+    expectations: [],
+    createdAt: now,
+    updatedAt: now,
+    ...partial,
+  }
 }
 
 // Helper type guards
@@ -225,6 +275,7 @@ export function createDMNModel(partial?: Partial<DMNModel>): DMNModel {
     decisions: [],
     businessKnowledgeModels: [],
     constants: [],
+    testCases: [],
     ...partial,
   }
 }

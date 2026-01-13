@@ -5,6 +5,7 @@ import { GraphView } from './components/graph-view'
 import { EditorToolbar } from './components/editor-toolbar'
 import { ConstantsEditor } from './components/constants-editor'
 import { ExecutionPanel } from './components/execution-panel'
+import { TestCasesPanel } from './components/test-cases-panel'
 import {
   Tabs,
   TabsContent,
@@ -20,16 +21,25 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  FlaskConical,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+
+export type LeftPanelTab = 'model' | 'constants' | 'execute' | 'tests'
 
 export function EditorPage() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  const [activeLeftTab, setActiveLeftTab] = useState<LeftPanelTab>('model')
+
+  const openExecutePanel = () => {
+    setLeftSidebarOpen(true)
+    setActiveLeftTab('execute')
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <EditorToolbar />
+      <EditorToolbar onRunClick={openExecutePanel} />
       <div className="flex-1 flex overflow-hidden">
         {/* Left sidebar - Model Explorer & Constants */}
         <div
@@ -41,20 +51,24 @@ export function EditorPage() {
           )}
         >
           {leftSidebarOpen && (
-            <Tabs defaultValue="model" className="h-full flex flex-col">
-              <div className="p-2 border-b">
-                <TabsList className="w-full">
-                  <TabsTrigger value="model" className="flex-1">
-                    <FolderTree className="h-4 w-4 mr-1" />
-                    Model
+            <Tabs
+              value={activeLeftTab}
+              onValueChange={(v) => setActiveLeftTab(v as LeftPanelTab)}
+              className="h-full flex flex-col"
+            >
+              <div className="px-2 py-1.5 border-b">
+                <TabsList className="w-full grid grid-cols-4">
+                  <TabsTrigger value="model" title="Model Explorer">
+                    <FolderTree className="h-4 w-4" />
                   </TabsTrigger>
-                  <TabsTrigger value="constants" className="flex-1">
-                    <Hash className="h-4 w-4 mr-1" />
-                    Constants
+                  <TabsTrigger value="constants" title="Constants">
+                    <Hash className="h-4 w-4" />
                   </TabsTrigger>
-                  <TabsTrigger value="execute" className="flex-1">
-                    <Play className="h-4 w-4 mr-1" />
-                    Execute
+                  <TabsTrigger value="execute" title="Execute">
+                    <Play className="h-4 w-4" />
+                  </TabsTrigger>
+                  <TabsTrigger value="tests" title="Test Cases">
+                    <FlaskConical className="h-4 w-4" />
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -66,6 +80,9 @@ export function EditorPage() {
               </TabsContent>
               <TabsContent value="execute" className="flex-1 overflow-hidden">
                 <ExecutionPanel />
+              </TabsContent>
+              <TabsContent value="tests" className="flex-1 overflow-hidden">
+                <TestCasesPanel />
               </TabsContent>
             </Tabs>
           )}

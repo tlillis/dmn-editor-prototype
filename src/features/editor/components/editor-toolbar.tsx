@@ -23,7 +23,11 @@ import {
 } from '../../../components/ui/dialog'
 import { Label } from '../../../components/ui/label'
 
-export function EditorToolbar() {
+interface EditorToolbarProps {
+  onRunClick?: () => void
+}
+
+export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
   const { model, isDirty, newModel, updateModelInfo, setModel } = useDMNStore()
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false)
   const [newModelName, setNewModelName] = useState('')
@@ -165,8 +169,8 @@ export function EditorToolbar() {
           Export DMN
         </Button>
 
-        {/* Run (placeholder for future) */}
-        <Button variant="secondary" size="sm" disabled>
+        {/* Run - opens Execute panel */}
+        <Button variant="secondary" size="sm" onClick={onRunClick}>
           <Play className="h-4 w-4 mr-2" />
           Run
         </Button>

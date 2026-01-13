@@ -27,6 +27,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Eraser,
 } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 
@@ -181,10 +182,20 @@ export function ExecutionPanel() {
             variant="ghost"
             size="sm"
             onClick={initializeInputs}
-            title="Reset inputs"
+            title="Reset inputs to defaults"
           >
             <RotateCcw className="h-4 w-4" />
           </Button>
+          {executionContext && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearExecution}
+              title="Clear results"
+            >
+              <Eraser className="h-4 w-4" />
+            </Button>
+          )}
           <Button size="sm" onClick={runExecution} className="gap-1">
             <Play className="h-4 w-4" />
             Run
@@ -281,18 +292,6 @@ export function ExecutionPanel() {
               )}
             </CardContent>
           </Card>
-        )}
-
-        {/* Clear button */}
-        {executionContext && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={clearExecution}
-            className="w-full"
-          >
-            Clear Results
-          </Button>
         )}
       </div>
     </div>

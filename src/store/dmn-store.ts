@@ -10,11 +10,14 @@ import {
   type Constant,
   type ExecutionContext,
   type ValidationError,
+  type TestCase,
+  type TestCaseResult,
   createDMNModel,
   createInputData,
   createDecision,
   createBKM,
   createConstant,
+  createTestCase,
   generateId,
   findDuplicateNames,
   wouldNameConflict,
@@ -95,6 +98,19 @@ interface EditorState {
   // Actions - Execution
   setExecutionContext: (context: ExecutionContext | null) => void
   setIsExecuting: (isExecuting: boolean) => void
+
+  // Actions - Test Cases
+  addTestCase: (testCase?: Partial<TestCase>) => TestCase
+  updateTestCase: (id: string, updates: Partial<TestCase>) => void
+  deleteTestCase: (id: string) => void
+  duplicateTestCase: (id: string) => TestCase | null
+
+  // Test execution state
+  testResults: Map<string, TestCaseResult>
+  isRunningTests: boolean
+  setTestResult: (testCaseId: string, result: TestCaseResult) => void
+  clearTestResults: () => void
+  setIsRunningTests: (running: boolean) => void
 
   // Utility
   markClean: () => void
@@ -405,6 +421,71 @@ export const useDMNStore = create<EditorState>()(
     setIsExecuting: (isExecuting) =>
       set((state) => {
         state.isExecuting = isExecuting
+      }),
+
+    // Test Cases
+    testResults: new Map<string, TestCaseResult>(),
+    isRunningTests: false,
+
+    addTestCase: (partial) => {
+      const testCase = createTestCase(partial)
+      set((state) => {
+        state.model.testCases.push(testCase)
+        state.isDirty = true
+      })
+      return testCase
+    },
+
+    updateTestCase: (id, updates) =>
+      set((state) => {
+        const index = state.model.testCases.findIndex((t) => t.id === id)
+        if (index !== -1) {
+          Object.assign(state.model.testCases[index], updates, {
+            updatedAt: Date.now(),
+          })
+          state.isDirty = true
+        }
+      }),
+
+    deleteTestCase: (id) =>
+      set((state) => {
+        state.model.testCases = state.model.testCases.filter((t) => t.id !== id)
+        state.testResults.delete(id)
+        state.isDirty = true
+      }),
+
+    duplicateTestCase: (id) => {
+      const store = useDMNStore.getState()
+      const original = store.model.testCases.find((t) => t.id === id)
+      if (!original) return null
+
+      const duplicate = createTestCase({
+        name: `${original.name} (Copy)`,
+        description: original.description,
+        inputs: { ...original.inputs },
+        expectations: original.expectations.map((e) => ({ ...e })),
+      })
+
+      set((state) => {
+        state.model.testCases.push(duplicate)
+        state.isDirty = true
+      })
+      return duplicate
+    },
+
+    setTestResult: (testCaseId, result) =>
+      set((state) => {
+        state.testResults.set(testCaseId, result)
+      }),
+
+    clearTestResults: () =>
+      set((state) => {
+        state.testResults = new Map<string, TestCaseResult>()
+      }),
+
+    setIsRunningTests: (running) =>
+      set((state) => {
+        state.isRunningTests = running
       }),
 
     // Utility
