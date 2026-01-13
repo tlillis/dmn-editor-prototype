@@ -34,6 +34,7 @@ import {
   AlertCircle,
   Camera,
   Eraser,
+  Pencil,
 } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type {
@@ -71,6 +72,9 @@ export function TestCasesPanel() {
   >([])
   const [builderName, setBuilderName] = useState('')
   const [builderDescription, setBuilderDescription] = useState('')
+  const [editingExpIndex, setEditingExpIndex] = useState<number | null>(null)
+  const [newExpNodeId, setNewExpNodeId] = useState<string>('')
+  const [newExpValue, setNewExpValue] = useState<string>('')
 
   // Initialize builder with current input defaults
   const initializeBuilder = useCallback(
@@ -266,6 +270,57 @@ export function TestCasesPanel() {
   // Remove an expectation
   const removeExpectation = (index: number) => {
     setBuilderExpectations((prev) => prev.filter((_, i) => i !== index))
+    if (editingExpIndex === index) {
+      setEditingExpIndex(null)
+    }
+  }
+
+  // Update an expectation's expected value
+  const updateExpectationValue = (index: number, value: unknown) => {
+    setBuilderExpectations((prev) =>
+      prev.map((exp, i) =>
+        i === index ? { ...exp, expectedValue: value } : exp
+      )
+    )
+  }
+
+  // Parse a string value to the appropriate type
+  const parseExpectedValue = (valueStr: string): unknown => {
+    const trimmed = valueStr.trim()
+    // Try to parse as JSON first (handles numbers, booleans, arrays, objects)
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      // If not valid JSON, treat as string
+      return trimmed
+    }
+  }
+
+  // Add a new expectation manually
+  const addManualExpectation = () => {
+    if (!newExpNodeId) return
+    const decision = model.decisions.find((d) => d.id === newExpNodeId)
+    if (!decision) return
+
+    // Check if expectation for this node already exists
+    const existingIndex = builderExpectations.findIndex(
+      (e) => e.nodeId === newExpNodeId
+    )
+    if (existingIndex >= 0) {
+      // Update existing instead of adding duplicate
+      updateExpectationValue(existingIndex, parseExpectedValue(newExpValue))
+    } else {
+      setBuilderExpectations((prev) => [
+        ...prev,
+        {
+          nodeId: decision.id,
+          nodeName: decision.name,
+          expectedValue: parseExpectedValue(newExpValue),
+        },
+      ])
+    }
+    setNewExpNodeId('')
+    setNewExpValue('')
   }
 
   // Render input field for builder
@@ -427,36 +482,115 @@ export function TestCasesPanel() {
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-3">
+              {/* Existing expectations */}
               {builderExpectations.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Click "Capture Expected Outputs" to run the model and capture
-                  outputs
+                  Add expectations manually or use "Capture" to auto-fill from
+                  execution
                 </p>
               ) : (
-                builderExpectations.map((exp, index) => (
-                  <div
-                    key={`${exp.nodeId}-${index}`}
-                    className="flex items-center justify-between py-1 px-2 rounded bg-gray-50 text-sm"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium truncate block">
-                        {exp.nodeName}
-                      </span>
-                      <span className="font-mono text-xs text-green-700">
-                        {formatValue(exp.expectedValue)}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0"
-                      onClick={() => removeExpectation(index)}
+                <div className="space-y-2">
+                  {builderExpectations.map((exp, index) => (
+                    <div
+                      key={`${exp.nodeId}-${index}`}
+                      className="py-2 px-2 rounded bg-gray-50 text-sm"
                     >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium truncate">
+                          {exp.nodeName}
+                        </span>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={() =>
+                              setEditingExpIndex(
+                                editingExpIndex === index ? null : index
+                              )
+                            }
+                            title="Edit value"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={() => removeExpectation(index)}
+                            title="Remove"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      {editingExpIndex === index ? (
+                        <Input
+                          className="font-mono text-xs"
+                          value={JSON.stringify(exp.expectedValue)}
+                          onChange={(e) =>
+                            updateExpectationValue(
+                              index,
+                              parseExpectedValue(e.target.value)
+                            )
+                          }
+                          onBlur={() => setEditingExpIndex(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') setEditingExpIndex(null)
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span
+                          className="font-mono text-xs text-green-700 cursor-pointer hover:underline"
+                          onClick={() => setEditingExpIndex(index)}
+                        >
+                          {formatValue(exp.expectedValue)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new expectation manually */}
+              {model.decisions.length > 0 && (
+                <div className="pt-2 border-t space-y-2">
+                  <Label className="text-xs text-muted-foreground">
+                    Add Expectation
+                  </Label>
+                  <Select value={newExpNodeId} onValueChange={setNewExpNodeId}>
+                    <SelectTrigger className="text-sm">
+                      <SelectValue placeholder="Select decision..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {model.decisions.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                          {builderExpectations.some((e) => e.nodeId === d.id) &&
+                            ' (update)'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {newExpNodeId && (
+                    <div className="flex gap-2">
+                      <Input
+                        className="font-mono text-sm flex-1"
+                        placeholder="Expected value (JSON)"
+                        value={newExpValue}
+                        onChange={(e) => setNewExpValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') addManualExpectation()
+                        }}
+                      />
+                      <Button size="sm" onClick={addManualExpectation}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
