@@ -15,12 +15,27 @@ export const sampleSnapModel: DMNModel = {
   description:
     'Determines SNAP (food stamps) eligibility and benefit amount for Colorado households (FY 2025)',
   inputs: [
+    // === HOUSEHOLD INFORMATION ===
     {
       id: 'householdSize',
       name: 'Household Size',
       typeRef: 'number',
       description: 'Number of people in the household (1-8+)',
     },
+    {
+      id: 'hasElderlyOrDisabled',
+      name: 'Has Elderly Or Disabled',
+      typeRef: 'boolean',
+      description: 'Household has member age 60+ or receiving disability',
+    },
+    {
+      id: 'isHomeless',
+      name: 'Is Homeless',
+      typeRef: 'boolean',
+      description: 'Household lacks fixed, regular nighttime residence',
+    },
+
+    // === INCOME INPUTS ===
     {
       id: 'grossMonthlyIncome',
       name: 'Gross Monthly Income',
@@ -33,6 +48,8 @@ export const sampleSnapModel: DMNModel = {
       typeRef: 'number',
       description: 'Monthly income from employment (subset of gross income)',
     },
+
+    // === DEDUCTION INPUTS ===
     {
       id: 'dependentCareCosts',
       name: 'Dependent Care Costs',
@@ -58,24 +75,81 @@ export const sampleSnapModel: DMNModel = {
       description:
         'Out-of-pocket medical expenses for elderly/disabled members',
     },
+
+    // === NON-FINANCIAL REQUIREMENT INPUTS ===
     {
-      id: 'hasElderlyOrDisabled',
-      name: 'Has Elderly Or Disabled',
+      id: 'isUSCitizen',
+      name: 'Is US Citizen',
       typeRef: 'boolean',
-      description: 'Household has member age 60+ or receiving disability',
+      description: 'Applicant is a US citizen or US national',
     },
     {
-      id: 'isHomeless',
-      name: 'Is Homeless',
-      typeRef: 'boolean',
-      description: 'Household lacks fixed, regular nighttime residence',
-    },
-    {
-      id: 'meetsNonFinancialRequirements',
-      name: 'Meets Non Financial Requirements',
+      id: 'isQualifiedNoncitizen',
+      name: 'Is Qualified Noncitizen',
       typeRef: 'boolean',
       description:
-        'Meets citizenship, residency, work registration, and SSN requirements',
+        'Lawful permanent resident, refugee, asylee, or other qualified status',
+    },
+    {
+      id: 'livesInColorado',
+      name: 'Lives In Colorado',
+      typeRef: 'boolean',
+      description: 'Applicant currently resides in Colorado',
+    },
+    {
+      id: 'hasSSN',
+      name: 'Has SSN',
+      typeRef: 'boolean',
+      description: 'All household members have SSN or have applied for one',
+    },
+    {
+      id: 'registeredForWork',
+      name: 'Registered For Work',
+      typeRef: 'boolean',
+      description: 'Applicable members registered for work or exempt',
+    },
+    {
+      id: 'applicantAge',
+      name: 'Applicant Age',
+      typeRef: 'number',
+      description: 'Age of the primary applicant',
+    },
+    {
+      id: 'hasDependents',
+      name: 'Has Dependents',
+      typeRef: 'boolean',
+      description: 'Applicant has dependent children in household',
+    },
+    {
+      id: 'isStudent',
+      name: 'Is Student',
+      typeRef: 'boolean',
+      description: 'Applicant is enrolled in higher education',
+    },
+    {
+      id: 'studentMeetsExemption',
+      name: 'Student Meets Exemption',
+      typeRef: 'boolean',
+      description:
+        'Student works 20+ hrs/wk, in work-study, has dependents, etc.',
+    },
+    {
+      id: 'meetsABAWDWorkRequirement',
+      name: 'Meets ABAWD Work Requirement',
+      typeRef: 'boolean',
+      description: 'Works 80+ hrs/month, in training program, or has exemption',
+    },
+    {
+      id: 'isFleeingFelon',
+      name: 'Is Fleeing Felon',
+      typeRef: 'boolean',
+      description: 'Fleeing to avoid prosecution or custody for a felony',
+    },
+    {
+      id: 'violatedProbationOrParole',
+      name: 'Violated Probation Or Parole',
+      typeRef: 'boolean',
+      description: 'Currently in violation of probation or parole',
     },
   ],
   businessKnowledgeModels: [
@@ -223,9 +297,206 @@ else 1756 + (size - 8) * 220`,
       description: 'Minimum monthly benefit for 1-2 person households',
       category: 'Benefit Calculation',
     },
+    {
+      id: '_const_abawd_min_age',
+      name: 'ABAWD_MIN_AGE',
+      value: 18,
+      type: 'number',
+      description: 'Minimum age for ABAWD requirements',
+      category: 'Work Requirements',
+    },
+    {
+      id: '_const_abawd_max_age',
+      name: 'ABAWD_MAX_AGE',
+      value: 52,
+      type: 'number',
+      description: 'Maximum age for ABAWD requirements',
+      category: 'Work Requirements',
+    },
   ],
   decisions: [
-    // === ELIGIBILITY TESTS ===
+    // ============================================
+    // NON-FINANCIAL ELIGIBILITY DECISIONS
+    // ============================================
+
+    {
+      id: 'citizenshipRequirementMet',
+      name: 'Citizenship Requirement Met',
+      description: 'Must be US citizen or qualified non-citizen',
+      variable: {
+        name: 'Citizenship Requirement Met',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'crm-1', type: 'input', href: 'isUSCitizen' },
+        { id: 'crm-2', type: 'input', href: 'isQualifiedNoncitizen' },
+      ],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'crm-expr',
+        text: 'Is US Citizen or Is Qualified Noncitizen',
+        typeRef: 'boolean',
+      },
+    },
+    {
+      id: 'residencyRequirementMet',
+      name: 'Residency Requirement Met',
+      description: 'Must reside in Colorado',
+      variable: {
+        name: 'Residency Requirement Met',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'rrm-1', type: 'input', href: 'livesInColorado' },
+      ],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'rrm-expr',
+        text: 'Lives In Colorado',
+        typeRef: 'boolean',
+      },
+    },
+    {
+      id: 'ssnRequirementMet',
+      name: 'SSN Requirement Met',
+      description: 'Must have or have applied for SSN',
+      variable: {
+        name: 'SSN Requirement Met',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [{ id: 'ssn-1', type: 'input', href: 'hasSSN' }],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'ssn-expr',
+        text: 'Has SSN',
+        typeRef: 'boolean',
+      },
+    },
+    {
+      id: 'workRegistrationMet',
+      name: 'Work Registration Met',
+      description: 'Must be registered for work or exempt',
+      variable: {
+        name: 'Work Registration Met',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'wrm-1', type: 'input', href: 'registeredForWork' },
+      ],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'wrm-expr',
+        text: 'Registered For Work',
+        typeRef: 'boolean',
+      },
+    },
+    {
+      id: 'isABAWD',
+      name: 'Is ABAWD',
+      description:
+        'Able-Bodied Adult Without Dependents (subject to work requirements)',
+      variable: {
+        name: 'Is ABAWD',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'abawd-1', type: 'input', href: 'applicantAge' },
+        { id: 'abawd-2', type: 'input', href: 'hasDependents' },
+        { id: 'abawd-3', type: 'input', href: 'hasElderlyOrDisabled' },
+      ],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'abawd-expr',
+        text: `Applicant Age >= ABAWD_MIN_AGE and Applicant Age <= ABAWD_MAX_AGE and not(Has Dependents) and not(Has Elderly Or Disabled)`,
+        typeRef: 'boolean',
+      },
+    },
+    {
+      id: 'abawdRequirementMet',
+      name: 'ABAWD Requirement Met',
+      description: 'ABAWD work requirement satisfied or not applicable',
+      variable: {
+        name: 'ABAWD Requirement Met',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'abawdrm-1', type: 'input', href: 'meetsABAWDWorkRequirement' },
+        { id: 'abawdrm-2', type: 'decision', href: 'isABAWD' },
+      ],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'abawdrm-expr',
+        text: 'not(Is ABAWD) or Meets ABAWD Work Requirement',
+        typeRef: 'boolean',
+      },
+    },
+    {
+      id: 'studentEligibilityMet',
+      name: 'Student Eligibility Met',
+      description: 'Students must meet additional criteria',
+      variable: {
+        name: 'Student Eligibility Met',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'sem-1', type: 'input', href: 'isStudent' },
+        { id: 'sem-2', type: 'input', href: 'studentMeetsExemption' },
+      ],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'sem-expr',
+        text: 'not(Is Student) or Student Meets Exemption',
+        typeRef: 'boolean',
+      },
+    },
+    {
+      id: 'notDisqualified',
+      name: 'Not Disqualified',
+      description: 'Not disqualified due to fleeing felon or parole violation',
+      variable: {
+        name: 'Not Disqualified',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'nd-1', type: 'input', href: 'isFleeingFelon' },
+        { id: 'nd-2', type: 'input', href: 'violatedProbationOrParole' },
+      ],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'nd-expr',
+        text: 'not(Is Fleeing Felon) and not(Violated Probation Or Parole)',
+        typeRef: 'boolean',
+      },
+    },
+    {
+      id: 'nonFinancialRequirementsMet',
+      name: 'Non Financial Requirements Met',
+      description: 'All non-financial eligibility requirements satisfied',
+      variable: {
+        name: 'Non Financial Requirements Met',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'nfrm-1', type: 'decision', href: 'citizenshipRequirementMet' },
+        { id: 'nfrm-2', type: 'decision', href: 'residencyRequirementMet' },
+        { id: 'nfrm-3', type: 'decision', href: 'ssnRequirementMet' },
+        { id: 'nfrm-4', type: 'decision', href: 'workRegistrationMet' },
+        { id: 'nfrm-5', type: 'decision', href: 'abawdRequirementMet' },
+        { id: 'nfrm-6', type: 'decision', href: 'studentEligibilityMet' },
+        { id: 'nfrm-7', type: 'decision', href: 'notDisqualified' },
+      ],
+      knowledgeRequirements: [],
+      expression: {
+        id: 'nfrm-expr',
+        text: `Citizenship Requirement Met and Residency Requirement Met and SSN Requirement Met and Work Registration Met and ABAWD Requirement Met and Student Eligibility Met and Not Disqualified`,
+        typeRef: 'boolean',
+      },
+    },
+
+    // ============================================
+    // FINANCIAL ELIGIBILITY DECISIONS
+    // ============================================
+
     {
       id: 'grossIncomeTest',
       name: 'Gross Income Test',
@@ -266,7 +537,10 @@ else 1756 + (size - 8) * 220`,
       },
     },
 
-    // === DEDUCTION CALCULATIONS ===
+    // ============================================
+    // DEDUCTION CALCULATIONS
+    // ============================================
+
     {
       id: 'standardDeduction',
       name: 'Standard Deduction',
@@ -391,29 +665,36 @@ else min(SHELTER_DEDUCTION_CAP, max(0, Shelter Costs - Adjusted Income Before Sh
       },
     },
 
-    // === FINAL ELIGIBILITY ===
+    // ============================================
+    // FINAL ELIGIBILITY
+    // ============================================
+
     {
       id: 'snapEligible',
       name: 'SNAP Eligible',
-      description: 'Final eligibility: must pass all tests',
+      description:
+        'Final eligibility: must pass all financial and non-financial tests',
       variable: {
         name: 'SNAP Eligible',
         typeRef: 'boolean',
       },
       informationRequirements: [
-        { id: 'se-1', type: 'input', href: 'meetsNonFinancialRequirements' },
+        { id: 'se-1', type: 'decision', href: 'nonFinancialRequirementsMet' },
         { id: 'se-2', type: 'decision', href: 'grossIncomeTest' },
         { id: 'se-3', type: 'decision', href: 'netIncomeTest' },
       ],
       knowledgeRequirements: [],
       expression: {
         id: 'se-expr',
-        text: 'Meets Non Financial Requirements and Gross Income Test and Net Income Test',
+        text: 'Non Financial Requirements Met and Gross Income Test and Net Income Test',
         typeRef: 'boolean',
       },
     },
 
-    // === BENEFIT CALCULATION ===
+    // ============================================
+    // BENEFIT CALCULATION
+    // ============================================
+
     {
       id: 'calculatedBenefit',
       name: 'Calculated Benefit',
