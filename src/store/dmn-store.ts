@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import {
@@ -120,380 +121,417 @@ interface EditorState {
 enableMapSet()
 
 export const useDMNStore = create<EditorState>()(
-  immer((set) => ({
-    // Initial state
-    model: createDMNModel(),
-    selection: { type: null, id: null },
-    isDirty: false,
-    collapsedNodes: new Set<string>(),
-    pendingCenterNodeId: null,
-    executionContext: null,
-    isExecuting: false,
+  persist(
+    immer((set) => ({
+      // Initial state
+      model: createDMNModel(),
+      selection: { type: null, id: null },
+      isDirty: false,
+      collapsedNodes: new Set<string>(),
+      pendingCenterNodeId: null,
+      executionContext: null,
+      isExecuting: false,
 
-    // Model management
-    setModel: (model) =>
-      set((state) => {
-        state.model = model
-        state.isDirty = false
-        state.selection = { type: null, id: null }
-        state.collapsedNodes = new Set<string>()
-      }),
-
-    newModel: () =>
-      set((state) => {
-        state.model = createDMNModel()
-        state.isDirty = false
-        state.selection = { type: null, id: null }
-        state.collapsedNodes = new Set<string>()
-        state.executionContext = null
-      }),
-
-    updateModelInfo: (updates) =>
-      set((state) => {
-        Object.assign(state.model, updates)
-        state.isDirty = true
-      }),
-
-    // Inputs
-    addInput: (partial) => {
-      const input = createInputData(partial)
-      set((state) => {
-        state.model.inputs.push(input)
-        state.isDirty = true
-        state.selection = { type: 'input', id: input.id }
-      })
-      return input
-    },
-
-    updateInput: (id, updates) =>
-      set((state) => {
-        const index = state.model.inputs.findIndex((i) => i.id === id)
-        if (index !== -1) {
-          Object.assign(state.model.inputs[index], updates)
-          state.isDirty = true
-        }
-      }),
-
-    deleteInput: (id) =>
-      set((state) => {
-        state.model.inputs = state.model.inputs.filter((i) => i.id !== id)
-        // Also remove any references to this input in decisions
-        state.model.decisions.forEach((d) => {
-          d.informationRequirements = d.informationRequirements.filter(
-            (r) => r.href !== id
-          )
-        })
-        state.isDirty = true
-        if (state.selection.id === id) {
+      // Model management
+      setModel: (model) =>
+        set((state) => {
+          state.model = model
+          state.isDirty = false
           state.selection = { type: null, id: null }
-        }
-      }),
+          state.collapsedNodes = new Set<string>()
+        }),
 
-    // Decisions
-    addDecision: (partial) => {
-      const decision = createDecision(partial)
-      set((state) => {
-        state.model.decisions.push(decision)
-        state.isDirty = true
-        state.selection = { type: 'decision', id: decision.id }
-      })
-      return decision
-    },
-
-    updateDecision: (id, updates) =>
-      set((state) => {
-        const index = state.model.decisions.findIndex((d) => d.id === id)
-        if (index !== -1) {
-          const decision = state.model.decisions[index]
-          Object.assign(decision, updates)
-          // Keep variable name in sync with decision name
-          if (updates.name) {
-            decision.variable.name = updates.name
-          }
-          state.isDirty = true
-        }
-      }),
-
-    deleteDecision: (id) =>
-      set((state) => {
-        state.model.decisions = state.model.decisions.filter((d) => d.id !== id)
-        // Also remove any references to this decision in other decisions
-        state.model.decisions.forEach((d) => {
-          d.informationRequirements = d.informationRequirements.filter(
-            (r) => r.href !== id
-          )
-        })
-        state.isDirty = true
-        if (state.selection.id === id) {
+      newModel: () =>
+        set((state) => {
+          state.model = createDMNModel()
+          state.isDirty = false
           state.selection = { type: null, id: null }
-        }
-      }),
+          state.collapsedNodes = new Set<string>()
+          state.executionContext = null
+        }),
 
-    addDecisionDependency: (decisionId, dependencyId, type) =>
-      set((state) => {
-        const decision = state.model.decisions.find((d) => d.id === decisionId)
-        if (decision) {
-          // Check if dependency already exists
-          const exists = decision.informationRequirements.some(
-            (r) => r.href === dependencyId
-          )
-          if (!exists) {
-            decision.informationRequirements.push({
-              id: generateId(),
-              type,
-              href: dependencyId,
-            })
+      updateModelInfo: (updates) =>
+        set((state) => {
+          Object.assign(state.model, updates)
+          state.isDirty = true
+        }),
+
+      // Inputs
+      addInput: (partial) => {
+        const input = createInputData(partial)
+        set((state) => {
+          state.model.inputs.push(input)
+          state.isDirty = true
+          state.selection = { type: 'input', id: input.id }
+        })
+        return input
+      },
+
+      updateInput: (id, updates) =>
+        set((state) => {
+          const index = state.model.inputs.findIndex((i) => i.id === id)
+          if (index !== -1) {
+            Object.assign(state.model.inputs[index], updates)
             state.isDirty = true
           }
-        }
-      }),
+        }),
 
-    removeDecisionDependency: (decisionId, requirementId) =>
-      set((state) => {
-        const decision = state.model.decisions.find((d) => d.id === decisionId)
-        if (decision) {
-          decision.informationRequirements =
-            decision.informationRequirements.filter(
-              (r) => r.id !== requirementId
+      deleteInput: (id) =>
+        set((state) => {
+          state.model.inputs = state.model.inputs.filter((i) => i.id !== id)
+          // Also remove any references to this input in decisions
+          state.model.decisions.forEach((d) => {
+            d.informationRequirements = d.informationRequirements.filter(
+              (r) => r.href !== id
             )
-          state.isDirty = true
-        }
-      }),
-
-    addDecisionKnowledgeRequirement: (decisionId, bkmId) =>
-      set((state) => {
-        const decision = state.model.decisions.find((d) => d.id === decisionId)
-        if (decision) {
-          const exists = decision.knowledgeRequirements.some(
-            (r) => r.href === bkmId
-          )
-          if (!exists) {
-            decision.knowledgeRequirements.push({
-              id: generateId(),
-              href: bkmId,
-            })
-            state.isDirty = true
-          }
-        }
-      }),
-
-    removeDecisionKnowledgeRequirement: (decisionId, requirementId) =>
-      set((state) => {
-        const decision = state.model.decisions.find((d) => d.id === decisionId)
-        if (decision) {
-          decision.knowledgeRequirements =
-            decision.knowledgeRequirements.filter((r) => r.id !== requirementId)
-          state.isDirty = true
-        }
-      }),
-
-    // BKMs
-    addBKM: (partial) => {
-      const bkm = createBKM(partial)
-      set((state) => {
-        state.model.businessKnowledgeModels.push(bkm)
-        state.isDirty = true
-        state.selection = { type: 'bkm', id: bkm.id }
-      })
-      return bkm
-    },
-
-    updateBKM: (id, updates) =>
-      set((state) => {
-        const index = state.model.businessKnowledgeModels.findIndex(
-          (b) => b.id === id
-        )
-        if (index !== -1) {
-          const bkm = state.model.businessKnowledgeModels[index]
-          Object.assign(bkm, updates)
-          // Keep variable name in sync
-          if (updates.name) {
-            bkm.variable.name = updates.name
-          }
-          state.isDirty = true
-        }
-      }),
-
-    deleteBKM: (id) =>
-      set((state) => {
-        state.model.businessKnowledgeModels =
-          state.model.businessKnowledgeModels.filter((b) => b.id !== id)
-        // Also remove any references to this BKM in decisions
-        state.model.decisions.forEach((d) => {
-          d.knowledgeRequirements = d.knowledgeRequirements.filter(
-            (r) => r.href !== id
-          )
-        })
-        state.isDirty = true
-        if (state.selection.id === id) {
-          state.selection = { type: null, id: null }
-        }
-      }),
-
-    // Selection
-    select: (type, id) =>
-      set((state) => {
-        state.selection = { type, id }
-      }),
-
-    clearSelection: () =>
-      set((state) => {
-        state.selection = { type: null, id: null }
-      }),
-
-    centerOnNode: (nodeId) =>
-      set((state) => {
-        state.pendingCenterNodeId = nodeId
-      }),
-
-    clearPendingCenter: () =>
-      set((state) => {
-        state.pendingCenterNodeId = null
-      }),
-
-    // Graph collapse/expand
-    toggleNodeCollapsed: (nodeId) =>
-      set((state) => {
-        const newCollapsed = new Set(state.collapsedNodes)
-        if (newCollapsed.has(nodeId)) {
-          newCollapsed.delete(nodeId)
-        } else {
-          newCollapsed.add(nodeId)
-        }
-        state.collapsedNodes = newCollapsed
-      }),
-
-    expandAllNodes: () =>
-      set((state) => {
-        state.collapsedNodes = new Set<string>()
-      }),
-
-    collapseAllNodes: () =>
-      set((state) => {
-        // Collapse all decisions except terminal ones (those with no dependents)
-        const decisionsWithDependents = new Set<string>()
-        state.model.decisions.forEach((d) => {
-          d.informationRequirements
-            .filter((r) => r.type === 'decision')
-            .forEach((r) => decisionsWithDependents.add(r.href))
-        })
-        const nonTerminalDecisions = state.model.decisions
-          .filter((d) => decisionsWithDependents.has(d.id))
-          .map((d) => d.id)
-        state.collapsedNodes = new Set(nonTerminalDecisions)
-      }),
-
-    // Constants
-    addConstant: (partial) => {
-      const constant = createConstant(partial)
-      set((state) => {
-        state.model.constants.push(constant)
-        state.isDirty = true
-        state.selection = { type: 'constant', id: constant.id }
-      })
-      return constant
-    },
-
-    updateConstant: (id, updates) =>
-      set((state) => {
-        const index = state.model.constants.findIndex((c) => c.id === id)
-        if (index !== -1) {
-          Object.assign(state.model.constants[index], updates)
-          state.isDirty = true
-        }
-      }),
-
-    deleteConstant: (id) =>
-      set((state) => {
-        state.model.constants = state.model.constants.filter((c) => c.id !== id)
-        state.isDirty = true
-        if (state.selection.id === id) {
-          state.selection = { type: null, id: null }
-        }
-      }),
-
-    // Execution
-    setExecutionContext: (context) =>
-      set((state) => {
-        state.executionContext = context
-      }),
-
-    setIsExecuting: (isExecuting) =>
-      set((state) => {
-        state.isExecuting = isExecuting
-      }),
-
-    // Test Cases
-    testResults: new Map<string, TestCaseResult>(),
-    isRunningTests: false,
-
-    addTestCase: (partial) => {
-      const testCase = createTestCase(partial)
-      set((state) => {
-        state.model.testCases.push(testCase)
-        state.isDirty = true
-      })
-      return testCase
-    },
-
-    updateTestCase: (id, updates) =>
-      set((state) => {
-        const index = state.model.testCases.findIndex((t) => t.id === id)
-        if (index !== -1) {
-          Object.assign(state.model.testCases[index], updates, {
-            updatedAt: Date.now(),
           })
           state.isDirty = true
-        }
+          if (state.selection.id === id) {
+            state.selection = { type: null, id: null }
+          }
+        }),
+
+      // Decisions
+      addDecision: (partial) => {
+        const decision = createDecision(partial)
+        set((state) => {
+          state.model.decisions.push(decision)
+          state.isDirty = true
+          state.selection = { type: 'decision', id: decision.id }
+        })
+        return decision
+      },
+
+      updateDecision: (id, updates) =>
+        set((state) => {
+          const index = state.model.decisions.findIndex((d) => d.id === id)
+          if (index !== -1) {
+            const decision = state.model.decisions[index]
+            Object.assign(decision, updates)
+            // Keep variable name in sync with decision name
+            if (updates.name) {
+              decision.variable.name = updates.name
+            }
+            state.isDirty = true
+          }
+        }),
+
+      deleteDecision: (id) =>
+        set((state) => {
+          state.model.decisions = state.model.decisions.filter(
+            (d) => d.id !== id
+          )
+          // Also remove any references to this decision in other decisions
+          state.model.decisions.forEach((d) => {
+            d.informationRequirements = d.informationRequirements.filter(
+              (r) => r.href !== id
+            )
+          })
+          state.isDirty = true
+          if (state.selection.id === id) {
+            state.selection = { type: null, id: null }
+          }
+        }),
+
+      addDecisionDependency: (decisionId, dependencyId, type) =>
+        set((state) => {
+          const decision = state.model.decisions.find(
+            (d) => d.id === decisionId
+          )
+          if (decision) {
+            // Check if dependency already exists
+            const exists = decision.informationRequirements.some(
+              (r) => r.href === dependencyId
+            )
+            if (!exists) {
+              decision.informationRequirements.push({
+                id: generateId(),
+                type,
+                href: dependencyId,
+              })
+              state.isDirty = true
+            }
+          }
+        }),
+
+      removeDecisionDependency: (decisionId, requirementId) =>
+        set((state) => {
+          const decision = state.model.decisions.find(
+            (d) => d.id === decisionId
+          )
+          if (decision) {
+            decision.informationRequirements =
+              decision.informationRequirements.filter(
+                (r) => r.id !== requirementId
+              )
+            state.isDirty = true
+          }
+        }),
+
+      addDecisionKnowledgeRequirement: (decisionId, bkmId) =>
+        set((state) => {
+          const decision = state.model.decisions.find(
+            (d) => d.id === decisionId
+          )
+          if (decision) {
+            const exists = decision.knowledgeRequirements.some(
+              (r) => r.href === bkmId
+            )
+            if (!exists) {
+              decision.knowledgeRequirements.push({
+                id: generateId(),
+                href: bkmId,
+              })
+              state.isDirty = true
+            }
+          }
+        }),
+
+      removeDecisionKnowledgeRequirement: (decisionId, requirementId) =>
+        set((state) => {
+          const decision = state.model.decisions.find(
+            (d) => d.id === decisionId
+          )
+          if (decision) {
+            decision.knowledgeRequirements =
+              decision.knowledgeRequirements.filter(
+                (r) => r.id !== requirementId
+              )
+            state.isDirty = true
+          }
+        }),
+
+      // BKMs
+      addBKM: (partial) => {
+        const bkm = createBKM(partial)
+        set((state) => {
+          state.model.businessKnowledgeModels.push(bkm)
+          state.isDirty = true
+          state.selection = { type: 'bkm', id: bkm.id }
+        })
+        return bkm
+      },
+
+      updateBKM: (id, updates) =>
+        set((state) => {
+          const index = state.model.businessKnowledgeModels.findIndex(
+            (b) => b.id === id
+          )
+          if (index !== -1) {
+            const bkm = state.model.businessKnowledgeModels[index]
+            Object.assign(bkm, updates)
+            // Keep variable name in sync
+            if (updates.name) {
+              bkm.variable.name = updates.name
+            }
+            state.isDirty = true
+          }
+        }),
+
+      deleteBKM: (id) =>
+        set((state) => {
+          state.model.businessKnowledgeModels =
+            state.model.businessKnowledgeModels.filter((b) => b.id !== id)
+          // Also remove any references to this BKM in decisions
+          state.model.decisions.forEach((d) => {
+            d.knowledgeRequirements = d.knowledgeRequirements.filter(
+              (r) => r.href !== id
+            )
+          })
+          state.isDirty = true
+          if (state.selection.id === id) {
+            state.selection = { type: null, id: null }
+          }
+        }),
+
+      // Selection
+      select: (type, id) =>
+        set((state) => {
+          state.selection = { type, id }
+        }),
+
+      clearSelection: () =>
+        set((state) => {
+          state.selection = { type: null, id: null }
+        }),
+
+      centerOnNode: (nodeId) =>
+        set((state) => {
+          state.pendingCenterNodeId = nodeId
+        }),
+
+      clearPendingCenter: () =>
+        set((state) => {
+          state.pendingCenterNodeId = null
+        }),
+
+      // Graph collapse/expand
+      toggleNodeCollapsed: (nodeId) =>
+        set((state) => {
+          const newCollapsed = new Set(state.collapsedNodes)
+          if (newCollapsed.has(nodeId)) {
+            newCollapsed.delete(nodeId)
+          } else {
+            newCollapsed.add(nodeId)
+          }
+          state.collapsedNodes = newCollapsed
+        }),
+
+      expandAllNodes: () =>
+        set((state) => {
+          state.collapsedNodes = new Set<string>()
+        }),
+
+      collapseAllNodes: () =>
+        set((state) => {
+          // Collapse all decisions except terminal ones (those with no dependents)
+          const decisionsWithDependents = new Set<string>()
+          state.model.decisions.forEach((d) => {
+            d.informationRequirements
+              .filter((r) => r.type === 'decision')
+              .forEach((r) => decisionsWithDependents.add(r.href))
+          })
+          const nonTerminalDecisions = state.model.decisions
+            .filter((d) => decisionsWithDependents.has(d.id))
+            .map((d) => d.id)
+          state.collapsedNodes = new Set(nonTerminalDecisions)
+        }),
+
+      // Constants
+      addConstant: (partial) => {
+        const constant = createConstant(partial)
+        set((state) => {
+          state.model.constants.push(constant)
+          state.isDirty = true
+          state.selection = { type: 'constant', id: constant.id }
+        })
+        return constant
+      },
+
+      updateConstant: (id, updates) =>
+        set((state) => {
+          const index = state.model.constants.findIndex((c) => c.id === id)
+          if (index !== -1) {
+            Object.assign(state.model.constants[index], updates)
+            state.isDirty = true
+          }
+        }),
+
+      deleteConstant: (id) =>
+        set((state) => {
+          state.model.constants = state.model.constants.filter(
+            (c) => c.id !== id
+          )
+          state.isDirty = true
+          if (state.selection.id === id) {
+            state.selection = { type: null, id: null }
+          }
+        }),
+
+      // Execution
+      setExecutionContext: (context) =>
+        set((state) => {
+          state.executionContext = context
+        }),
+
+      setIsExecuting: (isExecuting) =>
+        set((state) => {
+          state.isExecuting = isExecuting
+        }),
+
+      // Test Cases
+      testResults: new Map<string, TestCaseResult>(),
+      isRunningTests: false,
+
+      addTestCase: (partial) => {
+        const testCase = createTestCase(partial)
+        set((state) => {
+          state.model.testCases.push(testCase)
+          state.isDirty = true
+        })
+        return testCase
+      },
+
+      updateTestCase: (id, updates) =>
+        set((state) => {
+          const index = state.model.testCases.findIndex((t) => t.id === id)
+          if (index !== -1) {
+            Object.assign(state.model.testCases[index], updates, {
+              updatedAt: Date.now(),
+            })
+            state.isDirty = true
+          }
+        }),
+
+      deleteTestCase: (id) =>
+        set((state) => {
+          state.model.testCases = state.model.testCases.filter(
+            (t) => t.id !== id
+          )
+          state.testResults.delete(id)
+          state.isDirty = true
+        }),
+
+      duplicateTestCase: (id) => {
+        const store = useDMNStore.getState()
+        const original = store.model.testCases.find((t) => t.id === id)
+        if (!original) return null
+
+        const duplicate = createTestCase({
+          name: `${original.name} (Copy)`,
+          description: original.description,
+          inputs: { ...original.inputs },
+          expectations: original.expectations.map((e) => ({ ...e })),
+        })
+
+        set((state) => {
+          state.model.testCases.push(duplicate)
+          state.isDirty = true
+        })
+        return duplicate
+      },
+
+      setTestResult: (testCaseId, result) =>
+        set((state) => {
+          state.testResults.set(testCaseId, result)
+        }),
+
+      clearTestResults: () =>
+        set((state) => {
+          state.testResults = new Map<string, TestCaseResult>()
+        }),
+
+      setIsRunningTests: (running) =>
+        set((state) => {
+          state.isRunningTests = running
+        }),
+
+      // Utility
+      markClean: () =>
+        set((state) => {
+          state.isDirty = false
+        }),
+    })),
+    {
+      name: 'dmn-editor-storage',
+      // Only persist the model, not UI state
+      partialize: (state) => ({ model: state.model }),
+      // Handle rehydration - merge persisted model with fresh state
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<EditorState>),
+        // Reset transient state on load
+        isDirty: false,
+        selection: { type: null, id: null },
+        collapsedNodes: new Set<string>(),
+        pendingCenterNodeId: null,
+        executionContext: null,
+        isExecuting: false,
+        testResults: new Map<string, TestCaseResult>(),
+        isRunningTests: false,
       }),
-
-    deleteTestCase: (id) =>
-      set((state) => {
-        state.model.testCases = state.model.testCases.filter((t) => t.id !== id)
-        state.testResults.delete(id)
-        state.isDirty = true
-      }),
-
-    duplicateTestCase: (id) => {
-      const store = useDMNStore.getState()
-      const original = store.model.testCases.find((t) => t.id === id)
-      if (!original) return null
-
-      const duplicate = createTestCase({
-        name: `${original.name} (Copy)`,
-        description: original.description,
-        inputs: { ...original.inputs },
-        expectations: original.expectations.map((e) => ({ ...e })),
-      })
-
-      set((state) => {
-        state.model.testCases.push(duplicate)
-        state.isDirty = true
-      })
-      return duplicate
-    },
-
-    setTestResult: (testCaseId, result) =>
-      set((state) => {
-        state.testResults.set(testCaseId, result)
-      }),
-
-    clearTestResults: () =>
-      set((state) => {
-        state.testResults = new Map<string, TestCaseResult>()
-      }),
-
-    setIsRunningTests: (running) =>
-      set((state) => {
-        state.isRunningTests = running
-      }),
-
-    // Utility
-    markClean: () =>
-      set((state) => {
-        state.isDirty = false
-      }),
-  }))
+    }
+  )
 )
 
 // Selectors for derived state

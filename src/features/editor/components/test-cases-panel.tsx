@@ -35,6 +35,8 @@ import {
   Camera,
   Eraser,
   Pencil,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type {
@@ -43,6 +45,8 @@ import type {
   TestCaseResult,
   TestExpectationResult,
 } from '../../../types/dmn'
+import { exportToTck } from '../utils/tck-export'
+import { importFromTck } from '../utils/tck-import'
 
 type ViewMode = 'list' | 'builder'
 
@@ -75,6 +79,62 @@ export function TestCasesPanel() {
   const [editingExpIndex, setEditingExpIndex] = useState<number | null>(null)
   const [newExpNodeId, setNewExpNodeId] = useState<string>('')
   const [newExpValue, setNewExpValue] = useState<string>('')
+
+  // Export test cases to TCK XML
+  const handleExportTck = useCallback(() => {
+    if (model.testCases.length === 0) {
+      alert('No test cases to export')
+      return
+    }
+    const xml = exportToTck(model)
+    const blob = new Blob([xml], { type: 'application/xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${model.name.replace(/\s+/g, '_')}_tests.xml`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [model])
+
+  // Import test cases from TCK XML
+  const handleImportTck = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xml'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+
+      const text = await file.text()
+      const result = importFromTck(text, model)
+
+      // Show warnings/errors if any
+      if (result.errors.length > 0) {
+        alert(`Import errors:\n${result.errors.join('\n')}`)
+        return
+      }
+
+      if (result.warnings.length > 0) {
+        console.warn('TCK Import warnings:', result.warnings)
+      }
+
+      // Add imported test cases
+      result.testCases.forEach((tc) => {
+        addTestCase(tc)
+      })
+
+      if (result.testCases.length > 0) {
+        const warningText =
+          result.warnings.length > 0
+            ? `\n\nWarnings:\n${result.warnings.join('\n')}`
+            : ''
+        alert(`Imported ${result.testCases.length} test case(s)${warningText}`)
+      }
+    }
+    input.click()
+  }, [model, addTestCase])
 
   // Initialize builder with current input defaults
   const initializeBuilder = useCallback(
@@ -617,6 +677,23 @@ export function TestCasesPanel() {
               <Eraser className="h-4 w-4" />
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleImportTck}
+            title="Import TCK test cases"
+          >
+            <Upload className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExportTck}
+            title="Export TCK test cases"
+            disabled={model.testCases.length === 0}
+          >
+            <Download className="h-4 w-4" />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
