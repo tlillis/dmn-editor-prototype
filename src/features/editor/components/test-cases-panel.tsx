@@ -25,6 +25,12 @@ import {
   AccordionTrigger,
 } from '../../../components/ui/accordion'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../../components/ui/dropdown-menu'
+import {
   Play,
   Plus,
   Trash2,
@@ -37,6 +43,7 @@ import {
   Pencil,
   Download,
   Upload,
+  MoreHorizontal,
 } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type {
@@ -62,6 +69,8 @@ export function TestCasesPanel() {
     setTestResult,
     clearTestResults,
     setIsRunningTests,
+    setExecutionContext,
+    setIsExecuting,
     select,
     centerOnNode,
   } = useDMNStore()
@@ -77,6 +86,7 @@ export function TestCasesPanel() {
   const [builderName, setBuilderName] = useState('')
   const [builderDescription, setBuilderDescription] = useState('')
   const [editingExpIndex, setEditingExpIndex] = useState<number | null>(null)
+  const [editingExpValue, setEditingExpValue] = useState<string>('')
   const [newExpNodeId, setNewExpNodeId] = useState<string>('')
   const [newExpValue, setNewExpValue] = useState<string>('')
 
@@ -201,6 +211,45 @@ export function TestCasesPanel() {
 
     setBuilderExpectations(newExpectations)
   }, [model, builderInputs])
+
+  // Preview execution - run model and show results on graph nodes
+  const previewExecution = useCallback(() => {
+    setIsExecuting(true)
+
+    try {
+      const normalizedInputs: Record<string, unknown> = {}
+      model.inputs.forEach((input) => {
+        const value = builderInputs[input.id]
+        if (input.typeRef === 'number' && value === '') {
+          normalizedInputs[input.id] = 0
+        } else {
+          normalizedInputs[input.id] = value
+        }
+      })
+
+      const result = executeModel(model, normalizedInputs)
+
+      // Convert to ExecutionContext format for the store (same as Execute panel)
+      const context = {
+        inputs: normalizedInputs,
+        results: Object.fromEntries(
+          Object.entries(result.decisions).map(([id, dr]) => [
+            id,
+            {
+              value: dr.value,
+              success: !dr.error,
+              error: dr.error,
+              timestamp: Date.now(),
+            },
+          ])
+        ),
+      }
+
+      setExecutionContext(context)
+    } finally {
+      setIsExecuting(false)
+    }
+  }, [model, builderInputs, setExecutionContext, setIsExecuting])
 
   // Save test case from builder
   const saveTestCase = useCallback(() => {
@@ -522,15 +571,25 @@ export function TestCasesPanel() {
             </CardContent>
           </Card>
 
-          {/* Capture Button */}
-          <Button
-            variant="outline"
-            className="w-full gap-2"
-            onClick={captureOutputs}
-          >
-            <Camera className="h-4 w-4" />
-            Capture Expected Outputs
-          </Button>
+          {/* Preview and Capture Buttons */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 gap-2"
+              onClick={previewExecution}
+            >
+              <Play className="h-4 w-4" />
+              Preview
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 gap-2"
+              onClick={captureOutputs}
+            >
+              <Camera className="h-4 w-4" />
+              Capture
+            </Button>
+          </div>
 
           {/* Expected Outputs */}
           <Card>
@@ -565,11 +624,17 @@ export function TestCasesPanel() {
                             variant="ghost"
                             size="sm"
                             className="h-6 w-6 p-0"
-                            onClick={() =>
-                              setEditingExpIndex(
-                                editingExpIndex === index ? null : index
-                              )
-                            }
+                            onClick={() => {
+                              if (editingExpIndex === index) {
+                                setEditingExpIndex(null)
+                                setEditingExpValue('')
+                              } else {
+                                setEditingExpIndex(index)
+                                setEditingExpValue(
+                                  JSON.stringify(exp.expectedValue)
+                                )
+                              }
+                            }}
                             title="Edit value"
                           >
                             <Pencil className="h-3 w-3" />
@@ -588,23 +653,40 @@ export function TestCasesPanel() {
                       {editingExpIndex === index ? (
                         <Input
                           className="font-mono text-xs"
-                          value={JSON.stringify(exp.expectedValue)}
-                          onChange={(e) =>
+                          value={editingExpValue}
+                          onChange={(e) => setEditingExpValue(e.target.value)}
+                          onBlur={() => {
                             updateExpectationValue(
                               index,
-                              parseExpectedValue(e.target.value)
+                              parseExpectedValue(editingExpValue)
                             )
-                          }
-                          onBlur={() => setEditingExpIndex(null)}
+                            setEditingExpIndex(null)
+                            setEditingExpValue('')
+                          }}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') setEditingExpIndex(null)
+                            if (e.key === 'Enter') {
+                              updateExpectationValue(
+                                index,
+                                parseExpectedValue(editingExpValue)
+                              )
+                              setEditingExpIndex(null)
+                              setEditingExpValue('')
+                            } else if (e.key === 'Escape') {
+                              setEditingExpIndex(null)
+                              setEditingExpValue('')
+                            }
                           }}
                           autoFocus
                         />
                       ) : (
                         <span
                           className="font-mono text-xs text-green-700 cursor-pointer hover:underline"
-                          onClick={() => setEditingExpIndex(index)}
+                          onClick={() => {
+                            setEditingExpIndex(index)
+                            setEditingExpValue(
+                              JSON.stringify(exp.expectedValue)
+                            )
+                          }}
                         >
                           {formatValue(exp.expectedValue)}
                         </span>
@@ -667,33 +749,32 @@ export function TestCasesPanel() {
           Test Cases
         </h2>
         <div className="flex gap-1">
-          {testResults.size > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearTestResults}
-              title="Clear results"
-            >
-              <Eraser className="h-4 w-4" />
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleImportTck}
-            title="Import TCK test cases"
-          >
-            <Upload className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleExportTck}
-            title="Export TCK test cases"
-            disabled={model.testCases.length === 0}
-          >
-            <Download className="h-4 w-4" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" title="More options">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleImportTck}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import TCK
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleExportTck}
+                disabled={model.testCases.length === 0}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export TCK
+              </DropdownMenuItem>
+              {testResults.size > 0 && (
+                <DropdownMenuItem onClick={clearTestResults}>
+                  <Eraser className="h-4 w-4 mr-2" />
+                  Clear Results
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="ghost"
             size="sm"
