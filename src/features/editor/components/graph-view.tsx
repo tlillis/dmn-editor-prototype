@@ -27,13 +27,16 @@ import {
   ChevronRight,
   Maximize2,
   Minimize2,
+  LayoutGrid,
 } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import { Button } from '../../../components/ui/button'
+import { formatValue } from '../../../lib/feel-engine'
 import type {
   InputData,
   Decision,
   BusinessKnowledgeModel,
+  ExecutionContext,
 } from '../../../types/dmn'
 
 // Custom node component for Input Data
@@ -47,10 +50,12 @@ function InputNode({
     element: InputData
     highlighted?: boolean
     onHover?: (id: string | null) => void
+    executionValue?: unknown
   }
   selected: boolean
 }) {
   const { select } = useDMNStore()
+  const hasValue = data.executionValue !== undefined
 
   return (
     <div
@@ -70,11 +75,18 @@ function InputNode({
       />
       <div className="flex items-center gap-2">
         <Database className="h-4 w-4 text-blue-500" />
-        <div>
+        <div className="flex-1 min-w-0">
           <div className="font-medium text-sm">{data.label}</div>
           <div className="text-xs text-muted-foreground">{data.typeRef}</div>
         </div>
       </div>
+      {hasValue && (
+        <div className="mt-2 pt-2 border-t border-blue-200">
+          <div className="text-xs font-mono text-blue-700 bg-blue-50 px-2 py-1 rounded truncate">
+            {formatValue(data.executionValue)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -93,10 +105,14 @@ function DecisionNode({
     hasHiddenDeps?: boolean
     onToggleCollapse?: () => void
     onHover?: (id: string | null) => void
+    executionValue?: unknown
+    executionError?: string
   }
   selected: boolean
 }) {
   const { select } = useDMNStore()
+  const hasResult =
+    data.executionValue !== undefined || data.executionError !== undefined
 
   return (
     <div
@@ -105,7 +121,8 @@ function DecisionNode({
         selected
           ? 'border-green-500 ring-2 ring-green-200'
           : 'border-green-300',
-        data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2'
+        data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2',
+        data.executionError && 'border-red-400'
       )}
       onClick={() => select('decision', data.element.id)}
       onMouseEnter={() => data.onHover?.(data.element.id)}
@@ -134,11 +151,29 @@ function DecisionNode({
           </button>
         )}
         <GitBranch className="h-4 w-4 text-green-500" />
-        <div>
+        <div className="flex-1 min-w-0">
           <div className="font-medium text-sm">{data.label}</div>
           <div className="text-xs text-muted-foreground">{data.typeRef}</div>
         </div>
       </div>
+      {hasResult && (
+        <div
+          className={cn(
+            'mt-2 pt-2 border-t',
+            data.executionError ? 'border-red-200' : 'border-green-200'
+          )}
+        >
+          {data.executionError ? (
+            <div className="text-xs font-mono text-red-600 bg-red-50 px-2 py-1 rounded truncate">
+              Error
+            </div>
+          ) : (
+            <div className="text-xs font-mono text-green-700 bg-green-50 px-2 py-1 rounded truncate">
+              {formatValue(data.executionValue)}
+            </div>
+          )}
+        </div>
+      )}
       {data.isCollapsed && data.hasHiddenDeps && (
         <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gray-500 text-white text-xs px-1.5 py-0.5 rounded-full">
           ...
@@ -316,7 +351,8 @@ async function layoutNodesAsync(
   bkms: BusinessKnowledgeModel[],
   collapsedNodes: Set<string>,
   toggleCollapse: (id: string) => void,
-  onHover: (id: string | null) => void
+  onHover: (id: string | null) => void,
+  executionContext: ExecutionContext | null
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
   const { visibleInputs, visibleDecisions, visibleBkms } = getVisibleElements(
     inputs,
@@ -344,10 +380,13 @@ async function layoutNodesAsync(
 
   // Add input nodes
   visibleInputs.forEach((input) => {
+    // Get execution value for this input
+    const executionValue = executionContext?.inputs[input.id]
+
     elkNodes.push({
       id: input.id,
       width: NODE_WIDTH,
-      height: NODE_HEIGHT,
+      height: executionValue !== undefined ? NODE_HEIGHT + 30 : NODE_HEIGHT,
     })
     nodes.push({
       id: input.id,
@@ -358,6 +397,7 @@ async function layoutNodesAsync(
         typeRef: input.typeRef,
         element: input,
         onHover,
+        executionValue,
       },
     })
   })
@@ -386,7 +426,15 @@ async function layoutNodesAsync(
       decision.informationRequirements.length > 0 ||
       decision.knowledgeRequirements.length > 0
 
-    elkNodes.push({ id: decision.id, width: NODE_WIDTH, height: NODE_HEIGHT })
+    // Get execution result for this decision
+    const executionResult = executionContext?.results[decision.id]
+    const hasExecutionResult = executionResult !== undefined
+
+    elkNodes.push({
+      id: decision.id,
+      width: NODE_WIDTH,
+      height: hasExecutionResult ? NODE_HEIGHT + 30 : NODE_HEIGHT,
+    })
     nodes.push({
       id: decision.id,
       type: 'decision',
@@ -399,6 +447,8 @@ async function layoutNodesAsync(
         hasHiddenDeps,
         onToggleCollapse: () => toggleCollapse(decision.id),
         onHover,
+        executionValue: executionResult?.value,
+        executionError: executionResult?.error,
       },
     })
 
@@ -503,6 +553,9 @@ function GraphViewInner() {
     toggleNodeCollapsed,
     expandAllNodes,
     collapseAllNodes,
+    executionContext,
+    pendingCenterNodeId,
+    clearPendingCenter,
   } = useDMNStore()
   const { setCenter, getZoom } = useReactFlow()
 
@@ -511,6 +564,10 @@ function GraphViewInner() {
 
   // Track which node was just toggled for centering
   const lastToggledNodeRef = useRef<string | null>(null)
+
+  // Store execution context in ref so we can access it during layout without it being a dependency
+  const executionContextRef = useRef(executionContext)
+  executionContextRef.current = executionContext
 
   // Get selected constant name for highlighting
   const selectedConstantName = useMemo(() => {
@@ -539,7 +596,15 @@ function GraphViewInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
-  // Update nodes when model or collapsed state changes (async for ELK)
+  // Track if we need to run layout (for manual relayout button)
+  const [layoutTrigger, setLayoutTrigger] = useState(0)
+
+  // Manual relayout function
+  const triggerRelayout = useCallback(() => {
+    setLayoutTrigger((prev) => prev + 1)
+  }, [])
+
+  // Update layout only when model structure or collapsed state changes (NOT on execution)
   useEffect(() => {
     let cancelled = false
 
@@ -549,16 +614,44 @@ function GraphViewInner() {
       model.businessKnowledgeModels,
       collapsedNodes,
       handleToggleCollapse,
-      handleHover
+      handleHover,
+      null // Don't use execution context for layout - values are overlaid separately
     ).then(({ nodes: newNodes, edges: newEdges }) => {
       if (cancelled) return
 
-      setNodes(newNodes)
+      // Apply execution values to the new nodes if we have them (use ref to avoid dependency)
+      const currentExecution = executionContextRef.current
+      const nodesWithExecution = currentExecution
+        ? newNodes.map((node) => {
+            if (node.type === 'input') {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  executionValue: currentExecution.inputs[node.id],
+                },
+              }
+            } else if (node.type === 'decision') {
+              const result = currentExecution.results[node.id]
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  executionValue: result?.value,
+                  executionError: result?.error,
+                },
+              }
+            }
+            return node
+          })
+        : newNodes
+
+      setNodes(nodesWithExecution)
       setEdges(newEdges)
 
       // Center on the toggled node after layout updates
       if (lastToggledNodeRef.current) {
-        const toggledNode = newNodes.find(
+        const toggledNode = nodesWithExecution.find(
           (n) => n.id === lastToggledNodeRef.current
         )
         if (toggledNode) {
@@ -586,11 +679,55 @@ function GraphViewInner() {
     collapsedNodes,
     handleToggleCollapse,
     handleHover,
+    layoutTrigger, // Only relayout when this changes (manual trigger)
     setNodes,
     setEdges,
     setCenter,
     getZoom,
   ])
+
+  // Update execution values on nodes WITHOUT changing positions
+  useEffect(() => {
+    if (!executionContext) {
+      // Clear execution values from all nodes
+      setNodes((nds) =>
+        nds.map((node) => ({
+          ...node,
+          data: {
+            ...node.data,
+            executionValue: undefined,
+            executionError: undefined,
+          },
+        }))
+      )
+      return
+    }
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.type === 'input') {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              executionValue: executionContext.inputs[node.id],
+            },
+          }
+        } else if (node.type === 'decision') {
+          const result = executionContext.results[node.id]
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              executionValue: result?.value,
+              executionError: result?.error,
+            },
+          }
+        }
+        return node
+      })
+    )
+  }, [executionContext, setNodes])
 
   // Update selection and highlighting state on nodes
   useEffect(() => {
@@ -640,6 +777,22 @@ function GraphViewInner() {
     }
   }, [hoveredNodeId, setEdges])
 
+  // Center on node when requested from outside (e.g., from Execute panel or Model Explorer)
+  useEffect(() => {
+    if (!pendingCenterNodeId) return
+
+    const node = nodes.find((n) => n.id === pendingCenterNodeId)
+    if (node) {
+      const zoom = getZoom()
+      setCenter(
+        node.position.x + NODE_WIDTH / 2,
+        node.position.y + NODE_HEIGHT / 2,
+        { zoom, duration: 300 }
+      )
+    }
+    clearPendingCenter()
+  }, [pendingCenterNodeId, nodes, setCenter, getZoom, clearPendingCenter])
+
   const onNodeClick = useCallback((_: React.MouseEvent, _node: Node) => {
     // Selection is handled in the node components
   }, [])
@@ -682,6 +835,16 @@ function GraphViewInner() {
         maskColor="rgba(0, 0, 0, 0.1)"
       />
       <Panel position="top-right" className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={triggerRelayout}
+          className="bg-white"
+          title="Recalculate node positions"
+        >
+          <LayoutGrid className="h-4 w-4 mr-1" />
+          Relayout
+        </Button>
         <Button
           variant="outline"
           size="sm"

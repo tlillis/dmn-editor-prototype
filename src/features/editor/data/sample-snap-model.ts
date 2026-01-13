@@ -1,91 +1,96 @@
 import type { DMNModel } from '../../../types/dmn'
 
+// Colorado SNAP Eligibility Model
+// Based on FY 2025 values (October 2024 - September 2025)
+// Colorado uses Broad-Based Categorical Eligibility (BBCE) with 200% FPL gross income limit
+// Sources:
+// - https://cdhs.colorado.gov/snap
+// - https://www.fns.usda.gov/snap/fy-2025-cola
+// - https://snapbenefitcalculator.com/colorado-snap-income-limits/
+
 export const sampleSnapModel: DMNModel = {
-  id: 'snap_eligibility',
-  name: 'SNAP Eligibility Determination',
-  namespace: 'https://example.org/snap',
-  description: 'Determines SNAP (food stamps) eligibility and benefit amount',
+  id: 'snap_eligibility_colorado',
+  name: 'Colorado SNAP Eligibility',
+  namespace: 'https://example.org/snap/colorado',
+  description:
+    'Determines SNAP (food stamps) eligibility and benefit amount for Colorado households (FY 2025)',
   inputs: [
     {
       id: 'householdSize',
       name: 'Household Size',
       typeRef: 'number',
-      description: 'Number of people in the household',
+      description: 'Number of people in the household (1-8+)',
     },
     {
       id: 'grossMonthlyIncome',
       name: 'Gross Monthly Income',
       typeRef: 'number',
-      description: 'Total gross monthly income before deductions',
+      description: 'Total gross monthly income before any deductions',
     },
     {
       id: 'earnedIncome',
       name: 'Earned Income',
       typeRef: 'number',
-      description: 'Income from employment',
+      description: 'Monthly income from employment (subset of gross income)',
     },
     {
       id: 'dependentCareCosts',
       name: 'Dependent Care Costs',
       typeRef: 'number',
-      description: 'Monthly costs for dependent care',
-    },
-    {
-      id: 'medicalExpenses',
-      name: 'Medical Expenses',
-      typeRef: 'number',
-      description: 'Monthly out-of-pocket medical expenses',
+      description: 'Monthly costs for care of a child or disabled adult',
     },
     {
       id: 'shelterCosts',
       name: 'Shelter Costs',
       typeRef: 'number',
-      description:
-        'Monthly shelter costs including rent/mortgage and utilities',
+      description: 'Monthly rent/mortgage, utilities, and housing costs',
     },
     {
       id: 'childSupportPaid',
       name: 'Child Support Paid',
       typeRef: 'number',
-      description: 'Monthly child support payments made',
+      description: 'Legally obligated child support payments made',
     },
     {
-      id: 'countableResources',
-      name: 'Countable Resources',
+      id: 'medicalExpenses',
+      name: 'Medical Expenses',
       typeRef: 'number',
-      description: 'Total countable resources (bank accounts, etc.)',
+      description:
+        'Out-of-pocket medical expenses for elderly/disabled members',
     },
     {
       id: 'hasElderlyOrDisabled',
-      name: 'Has Elderly Or Disabled Member',
+      name: 'Has Elderly Or Disabled',
       typeRef: 'boolean',
-      description: 'Whether household has member 60+ or disabled',
-    },
-    {
-      id: 'isUSCitizenOrEligibleNoncitizen',
-      name: 'Is US Citizen Or Eligible Noncitizen',
-      typeRef: 'boolean',
-      description: 'Citizenship/immigration status requirement',
+      description: 'Household has member age 60+ or receiving disability',
     },
     {
       id: 'isHomeless',
       name: 'Is Homeless',
       typeRef: 'boolean',
-      description: 'Whether applicant is homeless',
+      description: 'Household lacks fixed, regular nighttime residence',
+    },
+    {
+      id: 'meetsNonFinancialRequirements',
+      name: 'Meets Non Financial Requirements',
+      typeRef: 'boolean',
+      description:
+        'Meets citizenship, residency, work registration, and SSN requirements',
     },
   ],
   businessKnowledgeModels: [
     {
-      id: 'fplThresholds',
-      name: 'FPL Thresholds',
-      description: 'Federal Poverty Level thresholds by household size',
+      id: 'netIncomeLimitLookup',
+      name: 'Net Income Limit',
+      description: 'Net monthly income limit (100% FPL) by household size',
       variable: {
-        name: 'FPL Thresholds',
-        typeRef: 'context',
+        name: 'Net Income Limit',
+        typeRef: 'number',
       },
       parameters: [{ name: 'size', typeRef: 'number' }],
       expression: {
-        id: 'fpl-expr',
+        id: 'nil-expr',
+        // FY 2025 100% FPL values
         text: `if size = 1 then 1255
 else if size = 2 then 1704
 else if size = 3 then 2152
@@ -99,34 +104,61 @@ else 4394 + (size - 8) * 449`,
       expressionType: 'literal',
     },
     {
-      id: 'standardDeductionLookup',
-      name: 'Standard Deduction Lookup',
-      description: 'Standard deduction amount by household size',
+      id: 'grossIncomeLimitLookup',
+      name: 'Gross Income Limit',
+      description:
+        'Gross monthly income limit (200% FPL for Colorado BBCE) by household size',
       variable: {
-        name: 'Standard Deduction Lookup',
+        name: 'Gross Income Limit',
         typeRef: 'number',
       },
       parameters: [{ name: 'size', typeRef: 'number' }],
       expression: {
-        id: 'std-deduct-expr',
-        text: `if size <= 3 then 209
-else if size = 4 then 234
-else if size = 5 then 274
-else 314`,
+        id: 'gil-expr',
+        // FY 2025 200% FPL values (Colorado BBCE)
+        text: `if size = 1 then 2510
+else if size = 2 then 3408
+else if size = 3 then 4304
+else if size = 4 then 5200
+else if size = 5 then 6098
+else if size = 6 then 6994
+else if size = 7 then 7890
+else if size = 8 then 8788
+else 8788 + (size - 8) * 898`,
+      },
+      expressionType: 'literal',
+    },
+    {
+      id: 'standardDeductionLookup',
+      name: 'Standard Deduction',
+      description: 'Standard deduction amount by household size (FY 2025)',
+      variable: {
+        name: 'Standard Deduction',
+        typeRef: 'number',
+      },
+      parameters: [{ name: 'size', typeRef: 'number' }],
+      expression: {
+        id: 'sd-expr',
+        // FY 2025 standard deductions for 48 states + DC
+        text: `if size <= 3 then 204
+else if size = 4 then 217
+else if size = 5 then 254
+else 291`,
       },
       expressionType: 'literal',
     },
     {
       id: 'maxAllotmentLookup',
-      name: 'Max Allotment Lookup',
-      description: 'Maximum SNAP allotment by household size',
+      name: 'Max Allotment',
+      description: 'Maximum SNAP benefit by household size (FY 2025)',
       variable: {
-        name: 'Max Allotment Lookup',
+        name: 'Max Allotment',
         typeRef: 'number',
       },
       parameters: [{ name: 'size', typeRef: 'number' }],
       expression: {
-        id: 'max-allot-expr',
+        id: 'ma-expr',
+        // FY 2025 maximum allotments
         text: `if size = 1 then 292
 else if size = 2 then 536
 else if size = 3 then 768
@@ -142,53 +174,37 @@ else 1756 + (size - 8) * 220`,
   ],
   constants: [
     {
-      id: '_const_resource_limit_standard',
-      name: 'RESOURCE_LIMIT_STANDARD',
-      value: 3000,
+      id: '_const_earned_income_deduction_rate',
+      name: 'EARNED_INCOME_DEDUCTION_RATE',
+      value: 0.2,
       type: 'number',
-      description: 'Standard resource limit for most households',
-      category: 'Resource Limits',
-    },
-    {
-      id: '_const_resource_limit_elderly',
-      name: 'RESOURCE_LIMIT_ELDERLY_DISABLED',
-      value: 4500,
-      type: 'number',
-      description:
-        'Resource limit for households with elderly or disabled members',
-      category: 'Resource Limits',
+      description: '20% of earned income is deducted',
+      category: 'Deductions',
     },
     {
       id: '_const_medical_expense_threshold',
       name: 'MEDICAL_EXPENSE_THRESHOLD',
       value: 35,
       type: 'number',
-      description: 'Monthly medical expense threshold before deduction applies',
-      category: 'Deductions',
-    },
-    {
-      id: '_const_homeless_shelter_deduction',
-      name: 'HOMELESS_SHELTER_DEDUCTION',
-      value: 198.99,
-      type: 'number',
-      description: 'Standard utility allowance for homeless households',
+      description:
+        'Medical expenses above this amount are deductible (elderly/disabled only)',
       category: 'Deductions',
     },
     {
       id: '_const_shelter_deduction_cap',
       name: 'SHELTER_DEDUCTION_CAP',
-      value: 672,
+      value: 712,
       type: 'number',
       description:
-        'Maximum shelter deduction for non-elderly/disabled households',
+        'Maximum excess shelter deduction for non-elderly/disabled households',
       category: 'Deductions',
     },
     {
-      id: '_const_earned_income_deduction_rate',
-      name: 'EARNED_INCOME_DEDUCTION_RATE',
-      value: 0.2,
+      id: '_const_homeless_shelter_deduction',
+      name: 'HOMELESS_SHELTER_DEDUCTION',
+      value: 190.3,
       type: 'number',
-      description: 'Percentage of earned income that is deducted (20%)',
+      description: 'Standard shelter deduction for homeless households',
       category: 'Deductions',
     },
     {
@@ -196,36 +212,65 @@ else 1756 + (size - 8) * 220`,
       name: 'BENEFIT_REDUCTION_RATE',
       value: 0.3,
       type: 'number',
-      description: 'Rate at which net income reduces benefit amount (30%)',
+      description: '30% of net income reduces benefit amount',
+      category: 'Benefit Calculation',
+    },
+    {
+      id: '_const_minimum_benefit',
+      name: 'MINIMUM_BENEFIT',
+      value: 23,
+      type: 'number',
+      description: 'Minimum monthly benefit for 1-2 person households',
       category: 'Benefit Calculation',
     },
   ],
   decisions: [
+    // === ELIGIBILITY TESTS ===
     {
       id: 'grossIncomeTest',
       name: 'Gross Income Test',
-      description: 'Tests if gross income is within 130% FPL limit',
+      description:
+        'Passes if gross income is at or below 200% FPL (Colorado BBCE)',
       variable: {
         name: 'Gross Income Test',
         typeRef: 'boolean',
       },
       informationRequirements: [
-        { id: 'grit-1', type: 'input', href: 'householdSize' },
-        { id: 'grit-2', type: 'input', href: 'grossMonthlyIncome' },
-        { id: 'grit-3', type: 'input', href: 'hasElderlyOrDisabled' },
+        { id: 'git-1', type: 'input', href: 'householdSize' },
+        { id: 'git-2', type: 'input', href: 'grossMonthlyIncome' },
       ],
-      knowledgeRequirements: [{ id: 'grit-k1', href: 'fplThresholds' }],
+      knowledgeRequirements: [{ id: 'git-k1', href: 'grossIncomeLimitLookup' }],
       expression: {
-        id: 'grit-expr',
-        text: `if Has Elderly Or Disabled Member then true
-else Gross Monthly Income <= FPL Thresholds(Household Size).grossLimit`,
+        id: 'git-expr',
+        text: 'Gross Monthly Income <= Gross Income Limit(Household Size)',
         typeRef: 'boolean',
       },
     },
     {
+      id: 'netIncomeTest',
+      name: 'Net Income Test',
+      description: 'Passes if net income is at or below 100% FPL',
+      variable: {
+        name: 'Net Income Test',
+        typeRef: 'boolean',
+      },
+      informationRequirements: [
+        { id: 'nit-1', type: 'input', href: 'householdSize' },
+        { id: 'nit-2', type: 'decision', href: 'netMonthlyIncome' },
+      ],
+      knowledgeRequirements: [{ id: 'nit-k1', href: 'netIncomeLimitLookup' }],
+      expression: {
+        id: 'nit-expr',
+        text: 'Net Monthly Income <= Net Income Limit(Household Size)',
+        typeRef: 'boolean',
+      },
+    },
+
+    // === DEDUCTION CALCULATIONS ===
+    {
       id: 'standardDeduction',
       name: 'Standard Deduction',
-      description: 'Calculates standard deduction based on household size',
+      description: 'Standard deduction based on household size',
       variable: {
         name: 'Standard Deduction',
         typeRef: 'number',
@@ -236,14 +281,14 @@ else Gross Monthly Income <= FPL Thresholds(Household Size).grossLimit`,
       knowledgeRequirements: [{ id: 'sd-k1', href: 'standardDeductionLookup' }],
       expression: {
         id: 'sd-expr',
-        text: 'Standard Deduction Lookup(Household Size)',
+        text: 'Standard Deduction(Household Size)',
         typeRef: 'number',
       },
     },
     {
       id: 'earnedIncomeDeduction',
       name: 'Earned Income Deduction',
-      description: '20% deduction on earned income',
+      description: '20% deduction of earned income',
       variable: {
         name: 'Earned Income Deduction',
         typeRef: 'number',
@@ -261,7 +306,8 @@ else Gross Monthly Income <= FPL Thresholds(Household Size).grossLimit`,
     {
       id: 'medicalDeduction',
       name: 'Medical Deduction',
-      description: 'Medical expense deduction for elderly/disabled households',
+      description:
+        'Medical expenses over $35/month for elderly/disabled households',
       variable: {
         name: 'Medical Deduction',
         typeRef: 'number',
@@ -273,54 +319,16 @@ else Gross Monthly Income <= FPL Thresholds(Household Size).grossLimit`,
       knowledgeRequirements: [],
       expression: {
         id: 'md-expr',
-        text: `if Has Elderly Or Disabled Member and Medical Expenses > MEDICAL_EXPENSE_THRESHOLD
+        text: `if Has Elderly Or Disabled and Medical Expenses > MEDICAL_EXPENSE_THRESHOLD
 then Medical Expenses - MEDICAL_EXPENSE_THRESHOLD
 else 0`,
         typeRef: 'number',
       },
     },
     {
-      id: 'resourceTest',
-      name: 'Resource Test',
-      description: 'Tests if countable resources are within limits',
-      variable: {
-        name: 'Resource Test',
-        typeRef: 'boolean',
-      },
-      informationRequirements: [
-        { id: 'rt-1', type: 'input', href: 'countableResources' },
-        { id: 'rt-2', type: 'input', href: 'hasElderlyOrDisabled' },
-      ],
-      knowledgeRequirements: [],
-      expression: {
-        id: 'rt-expr',
-        text: `if Has Elderly Or Disabled Member then Countable Resources <= RESOURCE_LIMIT_ELDERLY_DISABLED
-else Countable Resources <= RESOURCE_LIMIT_STANDARD`,
-        typeRef: 'boolean',
-      },
-    },
-    {
-      id: 'citizenshipRequirementMet',
-      name: 'Citizenship Requirement Met',
-      description: 'Checks citizenship/immigration status',
-      variable: {
-        name: 'Citizenship Requirement Met',
-        typeRef: 'boolean',
-      },
-      informationRequirements: [
-        { id: 'crm-1', type: 'input', href: 'isUSCitizenOrEligibleNoncitizen' },
-      ],
-      knowledgeRequirements: [],
-      expression: {
-        id: 'crm-expr',
-        text: 'Is US Citizen Or Eligible Noncitizen',
-        typeRef: 'boolean',
-      },
-    },
-    {
       id: 'adjustedIncomeBeforeShelter',
       name: 'Adjusted Income Before Shelter',
-      description: 'Gross income minus all deductions except shelter',
+      description: 'Income after all deductions except shelter',
       variable: {
         name: 'Adjusted Income Before Shelter',
         typeRef: 'number',
@@ -358,8 +366,8 @@ else Countable Resources <= RESOURCE_LIMIT_STANDARD`,
       expression: {
         id: 'esd-expr',
         text: `if Is Homeless then HOMELESS_SHELTER_DEDUCTION
-else if Has Elderly Or Disabled Member then max(0, Shelter Costs - (Adjusted Income Before Shelter * 0.5))
-else min(SHELTER_DEDUCTION_CAP, max(0, Shelter Costs - (Adjusted Income Before Shelter * 0.5)))`,
+else if Has Elderly Or Disabled then max(0, Shelter Costs - Adjusted Income Before Shelter * 0.5)
+else min(SHELTER_DEDUCTION_CAP, max(0, Shelter Costs - Adjusted Income Before Shelter * 0.5))`,
         typeRef: 'number',
       },
     },
@@ -382,64 +390,68 @@ else min(SHELTER_DEDUCTION_CAP, max(0, Shelter Costs - (Adjusted Income Before S
         typeRef: 'number',
       },
     },
-    {
-      id: 'netIncomeTest',
-      name: 'Net Income Test',
-      description: 'Tests if net income is within 100% FPL limit',
-      variable: {
-        name: 'Net Income Test',
-        typeRef: 'boolean',
-      },
-      informationRequirements: [
-        { id: 'nit-1', type: 'input', href: 'householdSize' },
-        { id: 'nit-2', type: 'decision', href: 'netMonthlyIncome' },
-      ],
-      knowledgeRequirements: [{ id: 'nit-k1', href: 'fplThresholds' }],
-      expression: {
-        id: 'nit-expr',
-        text: 'Net Monthly Income <= FPL Thresholds(Household Size).netLimit',
-        typeRef: 'boolean',
-      },
-    },
+
+    // === FINAL ELIGIBILITY ===
     {
       id: 'snapEligible',
       name: 'SNAP Eligible',
-      description: 'Final eligibility determination',
+      description: 'Final eligibility: must pass all tests',
       variable: {
         name: 'SNAP Eligible',
         typeRef: 'boolean',
       },
       informationRequirements: [
-        { id: 'se-1', type: 'decision', href: 'grossIncomeTest' },
-        { id: 'se-2', type: 'decision', href: 'netIncomeTest' },
-        { id: 'se-3', type: 'decision', href: 'resourceTest' },
-        { id: 'se-4', type: 'decision', href: 'citizenshipRequirementMet' },
+        { id: 'se-1', type: 'input', href: 'meetsNonFinancialRequirements' },
+        { id: 'se-2', type: 'decision', href: 'grossIncomeTest' },
+        { id: 'se-3', type: 'decision', href: 'netIncomeTest' },
       ],
       knowledgeRequirements: [],
       expression: {
         id: 'se-expr',
-        text: 'Gross Income Test and Net Income Test and Resource Test and Citizenship Requirement Met',
+        text: 'Meets Non Financial Requirements and Gross Income Test and Net Income Test',
         typeRef: 'boolean',
+      },
+    },
+
+    // === BENEFIT CALCULATION ===
+    {
+      id: 'calculatedBenefit',
+      name: 'Calculated Benefit',
+      description: 'Raw benefit before minimum/eligibility adjustments',
+      variable: {
+        name: 'Calculated Benefit',
+        typeRef: 'number',
+      },
+      informationRequirements: [
+        { id: 'cb-1', type: 'input', href: 'householdSize' },
+        { id: 'cb-2', type: 'decision', href: 'netMonthlyIncome' },
+      ],
+      knowledgeRequirements: [{ id: 'cb-k1', href: 'maxAllotmentLookup' }],
+      expression: {
+        id: 'cb-expr',
+        text: 'max(0, Max Allotment(Household Size) - Net Monthly Income * BENEFIT_REDUCTION_RATE)',
+        typeRef: 'number',
       },
     },
     {
       id: 'benefitAmount',
       name: 'Benefit Amount',
-      description: 'Calculates monthly SNAP benefit amount',
+      description: 'Final monthly SNAP benefit (0 if not eligible)',
       variable: {
         name: 'Benefit Amount',
         typeRef: 'number',
       },
       informationRequirements: [
         { id: 'ba-1', type: 'input', href: 'householdSize' },
-        { id: 'ba-2', type: 'decision', href: 'netMonthlyIncome' },
-        { id: 'ba-3', type: 'decision', href: 'snapEligible' },
+        { id: 'ba-2', type: 'decision', href: 'snapEligible' },
+        { id: 'ba-3', type: 'decision', href: 'calculatedBenefit' },
       ],
-      knowledgeRequirements: [{ id: 'ba-k1', href: 'maxAllotmentLookup' }],
+      knowledgeRequirements: [],
       expression: {
         id: 'ba-expr',
         text: `if not(SNAP Eligible) then 0
-else max(0, Max Allotment Lookup(Household Size) - (Net Monthly Income * BENEFIT_REDUCTION_RATE))`,
+else if Household Size <= 2 and Calculated Benefit < MINIMUM_BENEFIT then MINIMUM_BENEFIT
+else Calculated Benefit`,
         typeRef: 'number',
       },
     },

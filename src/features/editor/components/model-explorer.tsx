@@ -138,6 +138,7 @@ export function ModelExplorer() {
     deleteDecision,
     addBKM,
     deleteBKM,
+    centerOnNode,
   } = useDMNStore()
 
   return (
@@ -173,7 +174,10 @@ export function ModelExplorer() {
                 isSelected={
                   selection.type === 'input' && selection.id === input.id
                 }
-                onClick={() => select('input', input.id)}
+                onClick={() => {
+                  select('input', input.id)
+                  centerOnNode(input.id)
+                }}
                 onDelete={() => deleteInput(input.id)}
               />
             ))
@@ -199,7 +203,10 @@ export function ModelExplorer() {
                 name={bkm.name}
                 typeRef={bkm.variable.typeRef}
                 isSelected={selection.type === 'bkm' && selection.id === bkm.id}
-                onClick={() => select('bkm', bkm.id)}
+                onClick={() => {
+                  select('bkm', bkm.id)
+                  centerOnNode(bkm.id)
+                }}
                 onDelete={() => deleteBKM(bkm.id)}
               />
             ))
@@ -227,7 +234,10 @@ export function ModelExplorer() {
                 isSelected={
                   selection.type === 'decision' && selection.id === decision.id
                 }
-                onClick={() => select('decision', decision.id)}
+                onClick={() => {
+                  select('decision', decision.id)
+                  centerOnNode(decision.id)
+                }}
                 onDelete={() => deleteDecision(decision.id)}
               />
             ))

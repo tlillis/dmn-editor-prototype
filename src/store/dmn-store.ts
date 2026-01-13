@@ -34,6 +34,7 @@ interface EditorState {
   selection: Selection
   isDirty: boolean
   collapsedNodes: Set<string>
+  pendingCenterNodeId: string | null
 
   // Execution state (for future engine integration)
   executionContext: ExecutionContext | null
@@ -80,6 +81,8 @@ interface EditorState {
   // Actions - Selection
   select: (type: SelectionType, id: string | null) => void
   clearSelection: () => void
+  centerOnNode: (nodeId: string) => void
+  clearPendingCenter: () => void
 
   // Actions - Graph collapse/expand
   toggleNodeCollapsed: (nodeId: string) => void
@@ -104,6 +107,7 @@ export const useDMNStore = create<EditorState>()(
     selection: { type: null, id: null },
     isDirty: false,
     collapsedNodes: new Set<string>(),
+    pendingCenterNodeId: null,
     executionContext: null,
     isExecuting: false,
 
@@ -316,6 +320,16 @@ export const useDMNStore = create<EditorState>()(
     clearSelection: () =>
       set((state) => {
         state.selection = { type: null, id: null }
+      }),
+
+    centerOnNode: (nodeId) =>
+      set((state) => {
+        state.pendingCenterNodeId = nodeId
+      }),
+
+    clearPendingCenter: () =>
+      set((state) => {
+        state.pendingCenterNodeId = null
       }),
 
     // Graph collapse/expand

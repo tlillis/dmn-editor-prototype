@@ -4,6 +4,7 @@ import { PropertiesPanel } from './components/properties-panel'
 import { GraphView } from './components/graph-view'
 import { EditorToolbar } from './components/editor-toolbar'
 import { ConstantsEditor } from './components/constants-editor'
+import { ExecutionPanel } from './components/execution-panel'
 import {
   Tabs,
   TabsContent,
@@ -14,6 +15,7 @@ import { Button } from '../../components/ui/button'
 import {
   FolderTree,
   Hash,
+  Play,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -50,6 +52,10 @@ export function EditorPage() {
                     <Hash className="h-4 w-4 mr-1" />
                     Constants
                   </TabsTrigger>
+                  <TabsTrigger value="execute" className="flex-1">
+                    <Play className="h-4 w-4 mr-1" />
+                    Execute
+                  </TabsTrigger>
                 </TabsList>
               </div>
               <TabsContent value="model" className="flex-1 overflow-hidden">
@@ -57,6 +63,9 @@ export function EditorPage() {
               </TabsContent>
               <TabsContent value="constants" className="flex-1 overflow-hidden">
                 <ConstantsEditor />
+              </TabsContent>
+              <TabsContent value="execute" className="flex-1 overflow-hidden">
+                <ExecutionPanel />
               </TabsContent>
             </Tabs>
           )}
