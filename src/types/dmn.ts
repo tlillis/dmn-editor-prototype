@@ -228,3 +228,82 @@ export function createDMNModel(partial?: Partial<DMNModel>): DMNModel {
     ...partial,
   }
 }
+
+// Validation types
+export interface ValidationError {
+  type: 'duplicate_name' | 'invalid_reference' | 'circular_dependency'
+  message: string
+  elementId?: string
+  elementType?: 'input' | 'decision' | 'bkm' | 'constant'
+}
+
+// Get all element names from a model (used for duplicate detection)
+export function getAllElementNames(
+  model: DMNModel
+): Map<string, { id: string; type: string }[]> {
+  const nameMap = new Map<string, { id: string; type: string }[]>()
+
+  const addName = (name: string, id: string, type: string) => {
+    const existing = nameMap.get(name) || []
+    existing.push({ id, type })
+    nameMap.set(name, existing)
+  }
+
+  model.inputs.forEach((input) => addName(input.name, input.id, 'input'))
+  model.decisions.forEach((decision) =>
+    addName(decision.name, decision.id, 'decision')
+  )
+  model.businessKnowledgeModels.forEach((bkm) =>
+    addName(bkm.name, bkm.id, 'bkm')
+  )
+  model.constants.forEach((constant) =>
+    addName(constant.name, constant.id, 'constant')
+  )
+
+  return nameMap
+}
+
+// Find duplicate names in the model
+export function findDuplicateNames(model: DMNModel): ValidationError[] {
+  const errors: ValidationError[] = []
+  const nameMap = getAllElementNames(model)
+
+  for (const [name, elements] of nameMap) {
+    if (elements.length > 1) {
+      const types = elements.map((e) => e.type).join(', ')
+      errors.push({
+        type: 'duplicate_name',
+        message: `Duplicate name "${name}" found in: ${types}`,
+        elementId: elements[0].id,
+        elementType: elements[0].type as ValidationError['elementType'],
+      })
+    }
+  }
+
+  return errors
+}
+
+// Check if a name would conflict with existing names
+export function wouldNameConflict(
+  model: DMNModel,
+  name: string,
+  excludeId?: string
+): { conflicts: boolean; conflictingType?: string } {
+  const nameMap = getAllElementNames(model)
+  const existing = nameMap.get(name)
+
+  if (!existing) {
+    return { conflicts: false }
+  }
+
+  // If we're excluding an ID (for updates), filter it out
+  const filtered = excludeId
+    ? existing.filter((e) => e.id !== excludeId)
+    : existing
+
+  if (filtered.length > 0) {
+    return { conflicts: true, conflictingType: filtered[0].type }
+  }
+
+  return { conflicts: false }
+}

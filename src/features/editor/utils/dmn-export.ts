@@ -51,8 +51,9 @@ ${entries}
 ${indent}</context>`
 }
 
-// Generate XML for a Constant (exported as a BKM with no parameters)
-function generateConstantXml(constant: Constant): string {
+// Generate XML for a Constant (exported as a Decision with no dependencies)
+// This is the standard DMN pattern for constants that KIE understands
+function generateConstantAsDecisionXml(constant: Constant): string {
   const typeRef =
     constant.type === 'number'
       ? 'number'
@@ -64,18 +65,16 @@ function generateConstantXml(constant: Constant): string {
       ? `"${escapeXml(String(constant.value))}"`
       : String(constant.value)
 
-  const descriptionAttr = constant.description
+  const descriptionElement = constant.description
     ? `\n    <description>${escapeXml(constant.description)}</description>`
     : ''
 
-  return `  <businessKnowledgeModel id="${escapeXml(constant.id)}" name="${escapeXml(constant.name)}">${descriptionAttr}
+  return `  <decision id="${escapeXml(constant.id)}" name="${escapeXml(constant.name)}">${descriptionElement}
     <variable name="${escapeXml(constant.name)}" typeRef="${typeRef}"/>
-    <encapsulatedLogic>
-      <literalExpression>
-        <text>${valueText}</text>
-      </literalExpression>
-    </encapsulatedLogic>
-  </businessKnowledgeModel>`
+    <literalExpression>
+      <text>${valueText}</text>
+    </literalExpression>
+  </decision>`
 }
 
 // Generate XML for a BusinessKnowledgeModel
@@ -106,17 +105,49 @@ ${expressionXml}
   </businessKnowledgeModel>`
 }
 
+// Find constants referenced in an expression text
+function findConstantReferences(
+  expressionText: string,
+  constants: Constant[]
+): Constant[] {
+  return constants.filter((constant) => {
+    // Use word boundary matching to avoid partial matches
+    const regex = new RegExp(`\\b${constant.name}\\b`)
+    return regex.test(expressionText)
+  })
+}
+
 // Generate XML for a Decision
-function generateDecisionXml(decision: Decision): string {
-  // Generate information requirements
-  const infoReqs = decision.informationRequirements
-    .map((req) => {
-      const tag = req.type === 'input' ? 'requiredInput' : 'requiredDecision'
-      return `    <informationRequirement>
+function generateDecisionXml(
+  decision: Decision,
+  constants: Constant[] = []
+): string {
+  // Find constants referenced in this decision's expression
+  const referencedConstants = findConstantReferences(
+    decision.expression.text,
+    constants
+  )
+
+  // Generate information requirements (including auto-detected constant references)
+  const existingReqs = decision.informationRequirements.map((req) => {
+    const tag = req.type === 'input' ? 'requiredInput' : 'requiredDecision'
+    return `    <informationRequirement>
       <${tag} href="#${escapeXml(req.href)}"/>
     </informationRequirement>`
-    })
-    .join('\n')
+  })
+
+  // Add information requirements for referenced constants (as decisions)
+  const constantReqs = referencedConstants
+    .filter(
+      (c) => !decision.informationRequirements.some((r) => r.href === c.id)
+    )
+    .map(
+      (c) => `    <informationRequirement>
+      <requiredDecision href="#${escapeXml(c.id)}"/>
+    </informationRequirement>`
+    )
+
+  const infoReqs = [...existingReqs, ...constantReqs].join('\n')
 
   // Generate knowledge requirements
   const knowReqs = decision.knowledgeRequirements
@@ -140,12 +171,21 @@ ${generateLiteralExpressionXml(decision.expression)}
 // Main export function
 export function exportToDMN(model: DMNModel): string {
   const inputs = model.inputs.map(generateInputDataXml).join('\n\n')
-  const constants = model.constants.map(generateConstantXml).join('\n\n')
   const bkms = model.businessKnowledgeModels.map(generateBKMXml).join('\n\n')
-  const decisions = model.decisions.map(generateDecisionXml).join('\n\n')
 
-  // Combine constants and BKMs (constants are exported as BKMs for FEEL compatibility)
-  const allBkms = [constants, bkms].filter((s) => s).join('\n\n')
+  // Constants are exported as Decisions with no dependencies (standard DMN pattern)
+  const constantDecisions = model.constants
+    .map(generateConstantAsDecisionXml)
+    .join('\n\n')
+  // Pass constants to generateDecisionXml so it can auto-detect and add informationRequirements
+  const decisions = model.decisions
+    .map((d) => generateDecisionXml(d, model.constants))
+    .join('\n\n')
+
+  // Combine constant decisions and regular decisions
+  const allDecisions = [constantDecisions, decisions]
+    .filter((s) => s)
+    .join('\n\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
@@ -160,11 +200,11 @@ export function exportToDMN(model: DMNModel): string {
   <!-- INPUT DATA -->
 ${inputs}
 
-  <!-- BUSINESS KNOWLEDGE MODELS (includes constants) -->
-${allBkms}
+  <!-- BUSINESS KNOWLEDGE MODELS -->
+${bkms}
 
-  <!-- DECISIONS -->
-${decisions}
+  <!-- DECISIONS (includes constants as decisions with no dependencies) -->
+${allDecisions}
 
 </definitions>`
 }

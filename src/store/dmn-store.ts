@@ -9,12 +9,15 @@ import {
   type BusinessKnowledgeModel,
   type Constant,
   type ExecutionContext,
+  type ValidationError,
   createDMNModel,
   createInputData,
   createDecision,
   createBKM,
   createConstant,
   generateId,
+  findDuplicateNames,
+  wouldNameConflict,
 } from '../types/dmn'
 
 // Selection state
@@ -488,4 +491,24 @@ export const useDecisionDependencies = (decisionId: string) => {
     .filter(Boolean) as BusinessKnowledgeModel[]
 
   return { inputs: inputDeps, decisions: decisionDeps, bkms: bkmDeps }
+}
+
+// Get validation errors for the model (duplicate names, etc.)
+export const useModelValidation = (): ValidationError[] => {
+  const { model } = useDMNStore()
+
+  return useMemo(() => {
+    return findDuplicateNames(model)
+  }, [model])
+}
+
+// Check if a name would conflict (for real-time validation in forms)
+export const useNameConflictCheck = () => {
+  const { model } = useDMNStore()
+
+  return useMemo(
+    () => (name: string, excludeId?: string) =>
+      wouldNameConflict(model, name, excludeId),
+    [model]
+  )
 }

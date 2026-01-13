@@ -155,10 +155,10 @@ export const sampleSnapModel: DMNModel = {
   businessKnowledgeModels: [
     {
       id: 'netIncomeLimitLookup',
-      name: 'Net Income Limit',
+      name: 'Net Income Limit Lookup',
       description: 'Net monthly income limit (100% FPL) by household size',
       variable: {
-        name: 'Net Income Limit',
+        name: 'Net Income Limit Lookup',
         typeRef: 'number',
       },
       parameters: [{ name: 'size', typeRef: 'number' }],
@@ -179,11 +179,11 @@ else 4394 + (size - 8) * 449`,
     },
     {
       id: 'grossIncomeLimitLookup',
-      name: 'Gross Income Limit',
+      name: 'Gross Income Limit Lookup',
       description:
         'Gross monthly income limit (200% FPL for Colorado BBCE) by household size',
       variable: {
-        name: 'Gross Income Limit',
+        name: 'Gross Income Limit Lookup',
         typeRef: 'number',
       },
       parameters: [{ name: 'size', typeRef: 'number' }],
@@ -204,10 +204,10 @@ else 8788 + (size - 8) * 898`,
     },
     {
       id: 'standardDeductionLookup',
-      name: 'Standard Deduction',
+      name: 'Standard Deduction Lookup',
       description: 'Standard deduction amount by household size (FY 2025)',
       variable: {
-        name: 'Standard Deduction',
+        name: 'Standard Deduction Lookup',
         typeRef: 'number',
       },
       parameters: [{ name: 'size', typeRef: 'number' }],
@@ -223,10 +223,10 @@ else 291`,
     },
     {
       id: 'maxAllotmentLookup',
-      name: 'Max Allotment',
+      name: 'Max Allotment Lookup',
       description: 'Maximum SNAP benefit by household size (FY 2025)',
       variable: {
-        name: 'Max Allotment',
+        name: 'Max Allotment Lookup',
         typeRef: 'number',
       },
       parameters: [{ name: 'size', typeRef: 'number' }],
@@ -407,6 +407,7 @@ else 1756 + (size - 8) * 220`,
       knowledgeRequirements: [],
       expression: {
         id: 'abawd-expr',
+        // Uses constants ABAWD_MIN_AGE and ABAWD_MAX_AGE
         text: `Applicant Age >= ABAWD_MIN_AGE and Applicant Age <= ABAWD_MAX_AGE and not(Has Dependents) and not(Has Elderly Or Disabled)`,
         typeRef: 'boolean',
       },
@@ -513,7 +514,7 @@ else 1756 + (size - 8) * 220`,
       knowledgeRequirements: [{ id: 'git-k1', href: 'grossIncomeLimitLookup' }],
       expression: {
         id: 'git-expr',
-        text: 'Gross Monthly Income <= Gross Income Limit(Household Size)',
+        text: 'Gross Monthly Income <= Gross Income Limit Lookup(Household Size)',
         typeRef: 'boolean',
       },
     },
@@ -532,7 +533,7 @@ else 1756 + (size - 8) * 220`,
       knowledgeRequirements: [{ id: 'nit-k1', href: 'netIncomeLimitLookup' }],
       expression: {
         id: 'nit-expr',
-        text: 'Net Monthly Income <= Net Income Limit(Household Size)',
+        text: 'Net Monthly Income <= Net Income Limit Lookup(Household Size)',
         typeRef: 'boolean',
       },
     },
@@ -555,7 +556,7 @@ else 1756 + (size - 8) * 220`,
       knowledgeRequirements: [{ id: 'sd-k1', href: 'standardDeductionLookup' }],
       expression: {
         id: 'sd-expr',
-        text: 'Standard Deduction(Household Size)',
+        text: 'Standard Deduction Lookup(Household Size)',
         typeRef: 'number',
       },
     },
@@ -573,6 +574,7 @@ else 1756 + (size - 8) * 220`,
       knowledgeRequirements: [],
       expression: {
         id: 'eid-expr',
+        // Uses constant EARNED_INCOME_DEDUCTION_RATE
         text: 'Earned Income * EARNED_INCOME_DEDUCTION_RATE',
         typeRef: 'number',
       },
@@ -593,6 +595,7 @@ else 1756 + (size - 8) * 220`,
       knowledgeRequirements: [],
       expression: {
         id: 'md-expr',
+        // Uses constant MEDICAL_EXPENSE_THRESHOLD
         text: `if Has Elderly Or Disabled and Medical Expenses > MEDICAL_EXPENSE_THRESHOLD
 then Medical Expenses - MEDICAL_EXPENSE_THRESHOLD
 else 0`,
@@ -639,6 +642,7 @@ else 0`,
       knowledgeRequirements: [],
       expression: {
         id: 'esd-expr',
+        // Uses constants HOMELESS_SHELTER_DEDUCTION and SHELTER_DEDUCTION_CAP
         text: `if Is Homeless then HOMELESS_SHELTER_DEDUCTION
 else if Has Elderly Or Disabled then max(0, Shelter Costs - Adjusted Income Before Shelter * 0.5)
 else min(SHELTER_DEDUCTION_CAP, max(0, Shelter Costs - Adjusted Income Before Shelter * 0.5))`,
@@ -710,7 +714,8 @@ else min(SHELTER_DEDUCTION_CAP, max(0, Shelter Costs - Adjusted Income Before Sh
       knowledgeRequirements: [{ id: 'cb-k1', href: 'maxAllotmentLookup' }],
       expression: {
         id: 'cb-expr',
-        text: 'max(0, Max Allotment(Household Size) - Net Monthly Income * BENEFIT_REDUCTION_RATE)',
+        // Uses constant BENEFIT_REDUCTION_RATE
+        text: 'max(0, Max Allotment Lookup(Household Size) - Net Monthly Income * BENEFIT_REDUCTION_RATE)',
         typeRef: 'number',
       },
     },
@@ -730,6 +735,7 @@ else min(SHELTER_DEDUCTION_CAP, max(0, Shelter Costs - Adjusted Income Before Sh
       knowledgeRequirements: [],
       expression: {
         id: 'ba-expr',
+        // Uses constant MINIMUM_BENEFIT
         text: `if not(SNAP Eligible) then 0
 else if Household Size <= 2 and Calculated Benefit < MINIMUM_BENEFIT then MINIMUM_BENEFIT
 else Calculated Benefit`,
