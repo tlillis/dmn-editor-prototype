@@ -6,6 +6,7 @@ import { EditorToolbar } from './components/editor-toolbar'
 import { ConstantsEditor } from './components/constants-editor'
 import { ExecutionPanel } from './components/execution-panel'
 import { TestCasesPanel } from './components/test-cases-panel'
+import { useDMNStore, type LeftPanelTab } from '../../store/dmn-store'
 import {
   Tabs,
   TabsContent,
@@ -25,12 +26,10 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
-export type LeftPanelTab = 'model' | 'constants' | 'execute' | 'tests'
-
 export function EditorPage() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
-  const [activeLeftTab, setActiveLeftTab] = useState<LeftPanelTab>('model')
+  const { activeLeftTab, setActiveLeftTab } = useDMNStore()
 
   const openExecutePanel = () => {
     setLeftSidebarOpen(true)

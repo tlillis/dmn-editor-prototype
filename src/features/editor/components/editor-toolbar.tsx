@@ -8,6 +8,9 @@ import {
   Play,
   FileJson,
   FlaskConical,
+  Eraser,
+  FolderOpen,
+  ChevronDown,
 } from 'lucide-react'
 import { exportToDMN } from '../utils/dmn-export'
 import { useState } from 'react'
@@ -19,8 +22,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '../../../components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../../../components/ui/dropdown-menu'
 import { Label } from '../../../components/ui/label'
 
 interface EditorToolbarProps {
@@ -28,9 +37,20 @@ interface EditorToolbarProps {
 }
 
 export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
-  const { model, isDirty, newModel, updateModelInfo, setModel } = useDMNStore()
+  const {
+    model,
+    isDirty,
+    newModel,
+    updateModelInfo,
+    setModel,
+    clearAllResults,
+    executionContext,
+    testResults,
+  } = useDMNStore()
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false)
   const [newModelName, setNewModelName] = useState('')
+
+  const hasResults = executionContext !== null || testResults.size > 0
 
   const handleExportDMN = () => {
     const xml = exportToDMN(model)
@@ -103,14 +123,30 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* New Model */}
-        <Dialog open={isNewDialogOpen} onOpenChange={setIsNewDialogOpen}>
-          <DialogTrigger asChild>
+        {/* File dropdown - New and Samples */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
-              <FilePlus className="h-4 w-4 mr-2" />
-              New
+              <FolderOpen className="h-4 w-4 mr-2" />
+              File
+              <ChevronDown className="h-3 w-3 ml-1" />
             </Button>
-          </DialogTrigger>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={() => setIsNewDialogOpen(true)}>
+              <FilePlus className="h-4 w-4 mr-2" />
+              New Model
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setModel(sampleSnapModel)}>
+              <FlaskConical className="h-4 w-4 mr-2" />
+              Load Sample (SNAP)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* New Model Dialog */}
+        <Dialog open={isNewDialogOpen} onOpenChange={setIsNewDialogOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Model</DialogTitle>
@@ -141,36 +177,46 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
           </DialogContent>
         </Dialog>
 
-        {/* Load Sample SNAP Model */}
+        {/* Import/Export dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Download className="h-4 w-4 mr-2" />
+              Import/Export
+              <ChevronDown className="h-3 w-3 ml-1" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={handleImportJSON}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import JSON
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleExportJSON}>
+              <FileJson className="h-4 w-4 mr-2" />
+              Save as JSON
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportDMN}>
+              <Download className="h-4 w-4 mr-2" />
+              Export as DMN
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Clear Results */}
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          onClick={() => setModel(sampleSnapModel)}
+          onClick={clearAllResults}
+          disabled={!hasResults}
+          title="Clear all execution and test results"
         >
-          <FlaskConical className="h-4 w-4 mr-2" />
-          Load Sample
-        </Button>
-
-        {/* Import JSON */}
-        <Button variant="outline" size="sm" onClick={handleImportJSON}>
-          <Upload className="h-4 w-4 mr-2" />
-          Import
-        </Button>
-
-        {/* Export JSON */}
-        <Button variant="outline" size="sm" onClick={handleExportJSON}>
-          <FileJson className="h-4 w-4 mr-2" />
-          Save JSON
-        </Button>
-
-        {/* Export DMN */}
-        <Button variant="default" size="sm" onClick={handleExportDMN}>
-          <Download className="h-4 w-4 mr-2" />
-          Export DMN
+          <Eraser className="h-4 w-4 mr-2" />
+          Clear Results
         </Button>
 
         {/* Run - opens Execute panel */}
-        <Button variant="secondary" size="sm" onClick={onRunClick}>
+        <Button variant="default" size="sm" onClick={onRunClick}>
           <Play className="h-4 w-4 mr-2" />
           Run
         </Button>

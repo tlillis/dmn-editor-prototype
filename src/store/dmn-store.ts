@@ -32,6 +32,9 @@ export interface Selection {
   id: string | null
 }
 
+// Left panel tabs
+export type LeftPanelTab = 'model' | 'constants' | 'execute' | 'tests'
+
 // Editor state
 interface EditorState {
   // The DMN model
@@ -42,10 +45,15 @@ interface EditorState {
   isDirty: boolean
   collapsedNodes: Set<string>
   pendingCenterNodeId: string | null
+  activeLeftTab: LeftPanelTab
 
   // Execution state (for future engine integration)
   executionContext: ExecutionContext | null
   isExecuting: boolean
+  executionSource: 'execute' | 'test-builder' | 'test-case' | null
+  executionInputsHash: string | null
+  executionTestCaseId: string | null
+  executionTestCaseName: string | null
 
   // Actions - Model management
   setModel: (model: DMNModel) => void
@@ -96,8 +104,17 @@ interface EditorState {
   expandAllNodes: () => void
   collapseAllNodes: () => void
 
+  // Actions - Tab navigation
+  setActiveLeftTab: (tab: LeftPanelTab) => void
+
   // Actions - Execution
-  setExecutionContext: (context: ExecutionContext | null) => void
+  setExecutionContext: (
+    context: ExecutionContext | null,
+    source?: 'execute' | 'test-builder' | 'test-case',
+    inputsHash?: string,
+    testCaseId?: string,
+    testCaseName?: string
+  ) => void
   setIsExecuting: (isExecuting: boolean) => void
 
   // Actions - Test Cases
@@ -112,6 +129,11 @@ interface EditorState {
   setTestResult: (testCaseId: string, result: TestCaseResult) => void
   clearTestResults: () => void
   setIsRunningTests: (running: boolean) => void
+  clearAllResults: () => void
+
+  // Cross-panel communication
+  pendingExecuteInputs: Record<string, unknown> | null
+  setPendingExecuteInputs: (inputs: Record<string, unknown> | null) => void
 
   // Utility
   markClean: () => void
@@ -129,8 +151,14 @@ export const useDMNStore = create<EditorState>()(
       isDirty: false,
       collapsedNodes: new Set<string>(),
       pendingCenterNodeId: null,
+      activeLeftTab: 'model' as LeftPanelTab,
       executionContext: null,
       isExecuting: false,
+      executionSource: null,
+      executionInputsHash: null,
+      executionTestCaseId: null,
+      executionTestCaseName: null,
+      pendingExecuteInputs: null,
 
       // Model management
       setModel: (model) =>
@@ -397,6 +425,12 @@ export const useDMNStore = create<EditorState>()(
           state.collapsedNodes = new Set(nonTerminalDecisions)
         }),
 
+      // Tab navigation
+      setActiveLeftTab: (tab) =>
+        set((state) => {
+          state.activeLeftTab = tab
+        }),
+
       // Constants
       addConstant: (partial) => {
         const constant = createConstant(partial)
@@ -429,9 +463,19 @@ export const useDMNStore = create<EditorState>()(
         }),
 
       // Execution
-      setExecutionContext: (context) =>
+      setExecutionContext: (
+        context,
+        source,
+        inputsHash,
+        testCaseId,
+        testCaseName
+      ) =>
         set((state) => {
           state.executionContext = context
+          state.executionSource = source ?? null
+          state.executionInputsHash = inputsHash ?? null
+          state.executionTestCaseId = testCaseId ?? null
+          state.executionTestCaseName = testCaseName ?? null
         }),
 
       setIsExecuting: (isExecuting) =>
@@ -506,6 +550,22 @@ export const useDMNStore = create<EditorState>()(
           state.isRunningTests = running
         }),
 
+      clearAllResults: () =>
+        set((state) => {
+          state.testResults = new Map<string, TestCaseResult>()
+          state.executionContext = null
+          state.executionSource = null
+          state.executionInputsHash = null
+          state.executionTestCaseId = null
+          state.executionTestCaseName = null
+        }),
+
+      // Cross-panel communication
+      setPendingExecuteInputs: (inputs) =>
+        set((state) => {
+          state.pendingExecuteInputs = inputs
+        }),
+
       // Utility
       markClean: () =>
         set((state) => {
@@ -525,10 +585,16 @@ export const useDMNStore = create<EditorState>()(
         selection: { type: null, id: null },
         collapsedNodes: new Set<string>(),
         pendingCenterNodeId: null,
+        activeLeftTab: 'model' as LeftPanelTab,
         executionContext: null,
         isExecuting: false,
+        executionSource: null,
+        executionInputsHash: null,
+        executionTestCaseId: null,
+        executionTestCaseName: null,
         testResults: new Map<string, TestCaseResult>(),
         isRunningTests: false,
+        pendingExecuteInputs: null,
       }),
     }
   )

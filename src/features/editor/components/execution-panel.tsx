@@ -22,14 +22,34 @@ import {
   CardTitle,
 } from '../../../components/ui/card'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../../../components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../../components/ui/dropdown-menu'
+import {
   Play,
   RotateCcw,
   CheckCircle,
   XCircle,
   AlertCircle,
   Eraser,
+  FlaskConical,
+  MoreHorizontal,
 } from 'lucide-react'
 import { cn } from '../../../lib/utils'
+
+// Simple hash function for comparing inputs
+function hashInputs(inputs: Record<string, unknown>): string {
+  return JSON.stringify(inputs, Object.keys(inputs).sort())
+}
 
 export function ExecutionPanel() {
   const {
@@ -37,11 +57,17 @@ export function ExecutionPanel() {
     executionContext,
     setExecutionContext,
     setIsExecuting,
+    pendingExecuteInputs,
+    setPendingExecuteInputs,
+    addTestCase,
+    setActiveLeftTab,
     select,
     centerOnNode,
   } = useDMNStore()
   const [inputValues, setInputValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<ExecutionResult | null>(null)
+  const [showCreateTestDialog, setShowCreateTestDialog] = useState(false)
+  const [newTestName, setNewTestName] = useState('New Test from Execute')
 
   // Initialize input values from model
   const initializeInputs = useCallback(() => {
@@ -68,6 +94,39 @@ export function ExecutionPanel() {
   useEffect(() => {
     initializeInputs()
   }, [initializeInputs])
+
+  // Load pending inputs from test cases panel
+  useEffect(() => {
+    if (pendingExecuteInputs) {
+      setInputValues(pendingExecuteInputs)
+      setPendingExecuteInputs(null)
+    }
+  }, [pendingExecuteInputs, setPendingExecuteInputs])
+
+  // Open dialog to create a test case
+  const openCreateTestDialog = useCallback(() => {
+    setNewTestName('New Test from Execute')
+    setShowCreateTestDialog(true)
+  }, [])
+
+  // Create a test case from current inputs and results
+  const createTestFromInputs = useCallback(() => {
+    addTestCase({
+      name: newTestName,
+      inputs: { ...inputValues },
+      expectations: lastResult
+        ? Object.values(lastResult.decisions)
+            .filter((dr) => !dr.error)
+            .map((dr) => ({
+              nodeId: dr.decisionId,
+              nodeName: dr.decisionName,
+              expectedValue: dr.value,
+            }))
+        : [],
+    })
+    setShowCreateTestDialog(false)
+    setActiveLeftTab('tests')
+  }, [inputValues, lastResult, newTestName, addTestCase, setActiveLeftTab])
 
   // Update a single input value
   const updateInputValue = (inputId: string, value: unknown) => {
@@ -112,7 +171,7 @@ export function ExecutionPanel() {
         ),
       }
 
-      setExecutionContext(context)
+      setExecutionContext(context, 'execute', hashInputs(normalizedInputs))
     } finally {
       setIsExecuting(false)
     }
@@ -178,24 +237,30 @@ export function ExecutionPanel() {
           Execute
         </h2>
         <div className="flex gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={initializeInputs}
-            title="Reset inputs to defaults"
-          >
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-          {executionContext && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearExecution}
-              title="Clear results"
-            >
-              <Eraser className="h-4 w-4" />
-            </Button>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={initializeInputs}>
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reset Inputs
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={openCreateTestDialog}>
+                <FlaskConical className="h-4 w-4 mr-2" />
+                Create Test Case
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={clearExecution}
+                disabled={!executionContext}
+              >
+                <Eraser className="h-4 w-4 mr-2" />
+                Clear Results
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button size="sm" onClick={runExecution} className="gap-1">
             <Play className="h-4 w-4" />
             Run
@@ -294,6 +359,65 @@ export function ExecutionPanel() {
           </Card>
         )}
       </div>
+
+      {/* Create Test Dialog */}
+      <Dialog
+        open={showCreateTestDialog}
+        onOpenChange={setShowCreateTestDialog}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Test Case</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="test-name">Test Name</Label>
+              <Input
+                id="test-name"
+                value={newTestName}
+                onChange={(e) => setNewTestName(e.target.value)}
+                placeholder="Enter test case name"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newTestName.trim()) {
+                    createTestFromInputs()
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+            {lastResult && (
+              <p className="text-sm text-muted-foreground">
+                This will create a test with{' '}
+                {
+                  Object.values(lastResult.decisions).filter((d) => !d.error)
+                    .length
+                }{' '}
+                expected outputs from the last execution.
+              </p>
+            )}
+            {!lastResult && (
+              <p className="text-sm text-muted-foreground">
+                No execution results yet. The test will be created with inputs
+                only (no expectations).
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateTestDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={createTestFromInputs}
+              disabled={!newTestName.trim()}
+            >
+              Create Test
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

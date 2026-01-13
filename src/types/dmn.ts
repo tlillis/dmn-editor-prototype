@@ -125,6 +125,9 @@ export interface ExecutionResult {
   success: boolean
   error?: string
   timestamp: number
+  // For test case display
+  expectedValue?: unknown
+  passed?: boolean
 }
 
 // Execution context - input values for running the model

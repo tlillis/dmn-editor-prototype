@@ -107,22 +107,33 @@ function DecisionNode({
     onHover?: (id: string | null) => void
     executionValue?: unknown
     executionError?: string
+    expectedValue?: unknown
+    testPassed?: boolean
   }
   selected: boolean
 }) {
   const { select } = useDMNStore()
   const hasResult =
     data.executionValue !== undefined || data.executionError !== undefined
+  const isTestResult = data.testPassed !== undefined
+  const hasExpectation = isTestResult && data.expectedValue !== undefined
+
+  // Determine border color based on test result
+  const getBorderClass = () => {
+    if (data.executionError) return 'border-red-400'
+    if (isTestResult) {
+      return data.testPassed ? 'border-green-500' : 'border-red-400'
+    }
+    return selected ? 'border-green-500' : 'border-green-300'
+  }
 
   return (
     <div
       className={cn(
         'px-4 py-3 rounded-lg border-2 bg-white shadow-sm min-w-[150px] relative',
-        selected
-          ? 'border-green-500 ring-2 ring-green-200'
-          : 'border-green-300',
-        data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2',
-        data.executionError && 'border-red-400'
+        getBorderClass(),
+        selected && 'ring-2 ring-green-200',
+        data.highlighted && !selected && 'ring-2 ring-amber-400 ring-offset-2'
       )}
       onClick={() => select('decision', data.element.id)}
       onMouseEnter={() => data.onHover?.(data.element.id)}
@@ -150,7 +161,16 @@ function DecisionNode({
             )}
           </button>
         )}
-        <GitBranch className="h-4 w-4 text-green-500" />
+        <GitBranch
+          className={cn(
+            'h-4 w-4',
+            isTestResult
+              ? data.testPassed
+                ? 'text-green-500'
+                : 'text-red-500'
+              : 'text-green-500'
+          )}
+        />
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm">{data.label}</div>
           <div className="text-xs text-muted-foreground">{data.typeRef}</div>
@@ -160,12 +180,38 @@ function DecisionNode({
         <div
           className={cn(
             'mt-2 pt-2 border-t',
-            data.executionError ? 'border-red-200' : 'border-green-200'
+            data.executionError
+              ? 'border-red-200'
+              : isTestResult
+                ? data.testPassed
+                  ? 'border-green-200'
+                  : 'border-red-200'
+                : 'border-green-200'
           )}
         >
           {data.executionError ? (
             <div className="text-xs font-mono text-red-600 bg-red-50 px-2 py-1 rounded truncate">
               Error
+            </div>
+          ) : hasExpectation ? (
+            <div className="space-y-1">
+              <div className="text-xs">
+                <span className="text-muted-foreground">Expected: </span>
+                <span className="font-mono text-green-700">
+                  {formatValue(data.expectedValue)}
+                </span>
+              </div>
+              <div className="text-xs">
+                <span className="text-muted-foreground">Actual: </span>
+                <span
+                  className={cn(
+                    'font-mono',
+                    data.testPassed ? 'text-green-700' : 'text-red-600'
+                  )}
+                >
+                  {formatValue(data.executionValue)}
+                </span>
+              </div>
             </div>
           ) : (
             <div className="text-xs font-mono text-green-700 bg-green-50 px-2 py-1 rounded truncate">
@@ -554,6 +600,8 @@ function GraphViewInner() {
     expandAllNodes,
     collapseAllNodes,
     executionContext,
+    executionSource,
+    executionTestCaseName,
     pendingCenterNodeId,
     clearPendingCenter,
   } = useDMNStore()
@@ -639,6 +687,8 @@ function GraphViewInner() {
                   ...node.data,
                   executionValue: result?.value,
                   executionError: result?.error,
+                  expectedValue: result?.expectedValue,
+                  testPassed: result?.passed,
                 },
               }
             }
@@ -697,6 +747,8 @@ function GraphViewInner() {
             ...node.data,
             executionValue: undefined,
             executionError: undefined,
+            expectedValue: undefined,
+            testPassed: undefined,
           },
         }))
       )
@@ -721,6 +773,8 @@ function GraphViewInner() {
               ...node.data,
               executionValue: result?.value,
               executionError: result?.error,
+              expectedValue: result?.expectedValue,
+              testPassed: result?.passed,
             },
           }
         }
@@ -816,6 +870,7 @@ function GraphViewInner() {
       defaultEdgeOptions={{
         type: 'default',
       }}
+      proOptions={{ hideAttribution: true }}
     >
       <Background color="#e5e7eb" gap={16} />
       <Controls />
@@ -865,6 +920,16 @@ function GraphViewInner() {
           Collapse All
         </Button>
       </Panel>
+      {executionContext && (
+        <Panel
+          position="bottom-center"
+          className="text-xs text-muted-foreground"
+        >
+          Showing: {executionSource === 'execute' && 'Execute panel'}
+          {executionSource === 'test-builder' && 'Test Builder preview'}
+          {executionSource === 'test-case' && `Test: ${executionTestCaseName}`}
+        </Panel>
+      )}
     </ReactFlow>
   )
 }

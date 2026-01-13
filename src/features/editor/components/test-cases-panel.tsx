@@ -31,6 +31,14 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../../../components/ui/dialog'
+import {
   Play,
   Plus,
   Trash2,
@@ -39,11 +47,13 @@ import {
   XCircle,
   AlertCircle,
   Camera,
-  Eraser,
   Pencil,
   Download,
   Upload,
   MoreHorizontal,
+  Send,
+  Eye,
+  RotateCcw,
 } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import type {
@@ -54,6 +64,11 @@ import type {
 } from '../../../types/dmn'
 import { exportToTck } from '../utils/tck-export'
 import { importFromTck } from '../utils/tck-import'
+
+// Simple hash function for comparing inputs
+function hashInputs(inputs: Record<string, unknown>): string {
+  return JSON.stringify(inputs, Object.keys(inputs).sort())
+}
 
 type ViewMode = 'list' | 'builder'
 
@@ -71,6 +86,8 @@ export function TestCasesPanel() {
     setIsRunningTests,
     setExecutionContext,
     setIsExecuting,
+    setPendingExecuteInputs,
+    setActiveLeftTab,
     select,
     centerOnNode,
   } = useDMNStore()
@@ -89,6 +106,29 @@ export function TestCasesPanel() {
   const [editingExpValue, setEditingExpValue] = useState<string>('')
   const [newExpNodeId, setNewExpNodeId] = useState<string>('')
   const [newExpValue, setNewExpValue] = useState<string>('')
+  const [showSendToExecuteDialog, setShowSendToExecuteDialog] = useState(false)
+  const [pendingSendInputs, setPendingSendInputs] = useState<Record<
+    string,
+    unknown
+  > | null>(null)
+
+  // Send inputs to execute panel with confirmation
+  const confirmSendToExecute = useCallback(() => {
+    if (pendingSendInputs) {
+      setPendingExecuteInputs(pendingSendInputs)
+      setActiveLeftTab('execute')
+      setShowSendToExecuteDialog(false)
+      setPendingSendInputs(null)
+    }
+  }, [pendingSendInputs, setPendingExecuteInputs, setActiveLeftTab])
+
+  const openSendToExecuteDialog = useCallback(
+    (inputs: Record<string, unknown>) => {
+      setPendingSendInputs(inputs)
+      setShowSendToExecuteDialog(true)
+    },
+    []
+  )
 
   // Export test cases to TCK XML
   const handleExportTck = useCallback(() => {
@@ -245,7 +285,7 @@ export function TestCasesPanel() {
         ),
       }
 
-      setExecutionContext(context)
+      setExecutionContext(context, 'test-builder', hashInputs(normalizedInputs))
     } finally {
       setIsExecuting(false)
     }
@@ -280,9 +320,9 @@ export function TestCasesPanel() {
     updateTestCase,
   ])
 
-  // Run a single test case
+  // Run a single test case (optionally show results on graph)
   const runTestCase = useCallback(
-    (testCase: TestCase) => {
+    (testCase: TestCase, showOnGraph: boolean = true) => {
       const startTime = Date.now()
 
       // Normalize inputs
@@ -300,6 +340,11 @@ export function TestCasesPanel() {
       })
 
       const result = executeModel(model, normalizedInputs)
+
+      // Build expectations map for quick lookup
+      const expectationsMap = new Map(
+        testCase.expectations.map((exp) => [exp.nodeId, exp])
+      )
 
       // Check expectations
       const expectationResults: TestExpectationResult[] =
@@ -352,17 +397,102 @@ export function TestCasesPanel() {
       }
 
       setTestResult(testCase.id, testResult)
+
+      // Show results on graph if requested
+      if (showOnGraph) {
+        const context = {
+          inputs: normalizedInputs,
+          results: Object.fromEntries(
+            Object.entries(result.decisions).map(([id, dr]) => {
+              const expectation = expectationsMap.get(id)
+              const passed = expectation
+                ? JSON.stringify(dr.value) ===
+                  JSON.stringify(expectation.expectedValue)
+                : undefined
+              return [
+                id,
+                {
+                  value: dr.value,
+                  success: !dr.error,
+                  error: dr.error,
+                  timestamp: Date.now(),
+                  expectedValue: expectation?.expectedValue,
+                  passed,
+                },
+              ]
+            })
+          ),
+        }
+        setExecutionContext(
+          context,
+          'test-case',
+          undefined,
+          testCase.id,
+          testCase.name
+        )
+      }
     },
-    [model, setTestResult]
+    [model, setTestResult, setExecutionContext]
   )
 
-  // Run all test cases
+  // Show existing test results on graph (without re-running)
+  const showTestOnGraph = useCallback(
+    (testCase: TestCase) => {
+      const testResult = testResults.get(testCase.id)
+      if (!testResult) {
+        // No results yet, run the test
+        runTestCase(testCase, true)
+        return
+      }
+
+      // Build context from existing results
+      const normalizedInputs: Record<string, unknown> = {}
+      model.inputs.forEach((input) => {
+        const value = testCase.inputs[input.id]
+        if (
+          input.typeRef === 'number' &&
+          (value === '' || value === undefined)
+        ) {
+          normalizedInputs[input.id] = 0
+        } else {
+          normalizedInputs[input.id] = value ?? getDefaultValue(input.typeRef)
+        }
+      })
+
+      const context = {
+        inputs: normalizedInputs,
+        results: Object.fromEntries(
+          testResult.expectationResults.map((er) => [
+            er.nodeId,
+            {
+              value: er.actualValue,
+              success: !er.error,
+              error: er.error,
+              timestamp: testResult.runAt,
+              expectedValue: er.expectedValue,
+              passed: er.passed,
+            },
+          ])
+        ),
+      }
+      setExecutionContext(
+        context,
+        'test-case',
+        undefined,
+        testCase.id,
+        testCase.name
+      )
+    },
+    [model, testResults, runTestCase, setExecutionContext]
+  )
+
+  // Run all test cases (don't update graph for batch runs)
   const runAllTests = useCallback(() => {
     setIsRunningTests(true)
     clearTestResults()
 
     model.testCases.forEach((testCase) => {
-      runTestCase(testCase)
+      runTestCase(testCase, false) // Don't show on graph for batch runs
     })
 
     setIsRunningTests(false)
@@ -769,7 +899,7 @@ export function TestCasesPanel() {
               </DropdownMenuItem>
               {testResults.size > 0 && (
                 <DropdownMenuItem onClick={clearTestResults}>
-                  <Eraser className="h-4 w-4 mr-2" />
+                  <RotateCcw className="h-4 w-4 mr-2" />
                   Clear Results
                 </DropdownMenuItem>
               )}
@@ -834,10 +964,10 @@ export function TestCasesPanel() {
                   <AccordionTrigger className="px-4 py-2 hover:no-underline">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {getStatusIcon(result)}
-                      <span className="truncate font-medium text-left">
+                      <span className="truncate font-medium text-left flex-1">
                         {testCase.name}
                       </span>
-                      <span className="text-xs text-muted-foreground ml-auto mr-2">
+                      <span className="text-xs text-muted-foreground shrink-0">
                         {testCase.expectations.length} expectations
                       </span>
                     </div>
@@ -851,7 +981,7 @@ export function TestCasesPanel() {
                       )}
 
                       {/* Test Actions */}
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 items-center">
                         <Button
                           variant="outline"
                           size="sm"
@@ -860,28 +990,57 @@ export function TestCasesPanel() {
                           <Play className="h-3 w-3 mr-1" />
                           Run
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => initializeBuilder(testCase)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => duplicateTestCase(testCase.id)}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteTestCase(testCase.id)}
-                          className="text-red-500 hover:text-red-600"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        {result && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => showTestOnGraph(testCase)}
+                            title="View results on graph"
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            View
+                          </Button>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="ml-auto"
+                            >
+                              <MoreHorizontal className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => initializeBuilder(testCase)}
+                            >
+                              <Pencil className="h-3 w-3 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => duplicateTestCase(testCase.id)}
+                            >
+                              <Copy className="h-3 w-3 mr-2" />
+                              Duplicate
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                openSendToExecuteDialog(testCase.inputs)
+                              }
+                            >
+                              <Send className="h-3 w-3 mr-2" />
+                              Send to Execute
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => deleteTestCase(testCase.id)}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-3 w-3 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
 
                       {/* Results */}
@@ -954,6 +1113,31 @@ export function TestCasesPanel() {
           </Accordion>
         )}
       </div>
+
+      {/* Send to Execute Confirmation Dialog */}
+      <Dialog
+        open={showSendToExecuteDialog}
+        onOpenChange={setShowSendToExecuteDialog}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send to Execute</DialogTitle>
+            <DialogDescription>
+              This will replace the current input values in the Execute panel
+              with the test case inputs.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowSendToExecuteDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={confirmSendToExecute}>Replace Inputs</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
