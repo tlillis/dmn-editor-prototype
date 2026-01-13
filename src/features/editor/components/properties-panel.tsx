@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '../../../components/ui/select'
 import { Textarea } from '../../../components/ui/textarea'
+import { FEELEditor } from '../../../components/feel-editor'
 import {
   Card,
   CardContent,
@@ -320,18 +321,15 @@ function DecisionProperties({ decision }: { decision: Decision }) {
 
       {/* FEEL Expression */}
       <div className="space-y-2">
-        <Label htmlFor="decision-expression">FEEL Expression</Label>
-        <Textarea
-          id="decision-expression"
+        <Label>FEEL Expression</Label>
+        <FEELEditor
           value={decision.expression.text}
-          onChange={(e) =>
+          onChange={(text) =>
             updateDecision(decision.id, {
-              expression: { ...decision.expression, text: e.target.value },
+              expression: { ...decision.expression, text },
             })
           }
-          rows={8}
-          placeholder="Enter FEEL expression..."
-          className="font-mono text-sm"
+          minHeight="150px"
         />
       </div>
 
@@ -477,22 +475,19 @@ function BKMProperties({ bkm }: { bkm: BusinessKnowledgeModel }) {
 
       {/* FEEL Expression */}
       <div className="space-y-2">
-        <Label htmlFor="bkm-expression">FEEL Expression</Label>
-        <Textarea
-          id="bkm-expression"
+        <Label>FEEL Expression</Label>
+        <FEELEditor
           value={expressionText}
-          onChange={(e) =>
+          onChange={(text) =>
             updateBKM(bkm.id, {
               expression: {
                 id: 'text' in bkm.expression ? bkm.expression.id : generateId(),
-                text: e.target.value,
+                text,
               },
               expressionType: 'literal',
             })
           }
-          rows={8}
-          placeholder="Enter FEEL expression..."
-          className="font-mono text-sm"
+          minHeight="150px"
         />
       </div>
 

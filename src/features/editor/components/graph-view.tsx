@@ -334,12 +334,21 @@ async function layoutNodesAsync(
   ])
 
   // Build ELK graph structure
-  const elkNodes: { id: string; width: number; height: number }[] = []
+  const elkNodes: {
+    id: string
+    width: number
+    height: number
+    layoutOptions?: Record<string, string>
+  }[] = []
   const elkEdges: { id: string; sources: string[]; targets: string[] }[] = []
 
   // Add input nodes
   visibleInputs.forEach((input) => {
-    elkNodes.push({ id: input.id, width: NODE_WIDTH, height: NODE_HEIGHT })
+    elkNodes.push({
+      id: input.id,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+    })
     nodes.push({
       id: input.id,
       type: 'input',
@@ -407,7 +416,7 @@ async function layoutNodesAsync(
         id: edgeId,
         source: req.href,
         target: decision.id,
-        type: 'smoothstep',
+        type: 'default',
         markerEnd: {
           type: MarkerType.ArrowClosed,
           width: 15,
@@ -434,7 +443,7 @@ async function layoutNodesAsync(
         id: edgeId,
         source: req.href,
         target: decision.id,
-        type: 'smoothstep',
+        type: 'default',
         markerEnd: {
           type: MarkerType.ArrowClosed,
           width: 15,
@@ -455,11 +464,14 @@ async function layoutNodesAsync(
     layoutOptions: {
       'elk.algorithm': 'layered',
       'elk.direction': 'DOWN',
-      'elk.spacing.nodeNode': '50',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '80',
+      'elk.spacing.nodeNode': '60',
+      'elk.spacing.edgeNode': '40',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '100',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '40',
+      'elk.layered.layering.strategy': 'LONGEST_PATH_SOURCE',
       'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
       'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-      'elk.edgeRouting': 'ORTHOGONAL',
+      'elk.edgeRouting': 'SPLINES',
       'elk.layered.mergeEdges': 'true',
     },
     children: elkNodes,
@@ -649,7 +661,7 @@ function GraphViewInner() {
       panOnScroll
       selectionOnDrag
       defaultEdgeOptions={{
-        type: 'smoothstep',
+        type: 'default',
       }}
     >
       <Background color="#e5e7eb" gap={16} />
