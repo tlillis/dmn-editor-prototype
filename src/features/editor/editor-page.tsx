@@ -29,16 +29,17 @@ import { cn } from '../../lib/utils'
 export function EditorPage() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
-  const { activeLeftTab, setActiveLeftTab } = useDMNStore()
+  const { activeLeftTab, setActiveLeftTab, setPendingRun } = useDMNStore()
 
-  const openExecutePanel = () => {
+  const openExecutePanelAndRun = () => {
     setLeftSidebarOpen(true)
     setActiveLeftTab('execute')
+    setPendingRun(true)
   }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <EditorToolbar onRunClick={openExecutePanel} />
+      <EditorToolbar onRunClick={openExecutePanelAndRun} />
       <div className="flex-1 flex overflow-hidden">
         {/* Left sidebar - Model Explorer & Constants */}
         <div

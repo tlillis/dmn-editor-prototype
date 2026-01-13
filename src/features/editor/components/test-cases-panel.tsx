@@ -86,6 +86,7 @@ export function TestCasesPanel() {
     setIsRunningTests,
     setExecutionContext,
     setIsExecuting,
+    executionTestCaseId,
     setPendingExecuteInputs,
     setActiveLeftTab,
     select,
@@ -900,7 +901,7 @@ export function TestCasesPanel() {
               {testResults.size > 0 && (
                 <DropdownMenuItem onClick={clearTestResults}>
                   <RotateCcw className="h-4 w-4 mr-2" />
-                  Clear Results
+                  Clear Test Results
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -963,12 +964,17 @@ export function TestCasesPanel() {
                 <AccordionItem key={testCase.id} value={testCase.id}>
                   <AccordionTrigger className="px-4 py-2 hover:no-underline">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {getStatusIcon(result)}
-                      <span className="truncate font-medium text-left flex-1">
+                      <span className="w-4 shrink-0 flex items-center justify-center">
+                        {getStatusIcon(result)}
+                      </span>
+                      <span className="truncate font-medium text-left max-w-[160px]">
                         {testCase.name}
                       </span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {testCase.expectations.length} expectations
+                      <span
+                        className="text-xs text-muted-foreground shrink-0 ml-auto"
+                        title={`${testCase.expectations.length} expected output${testCase.expectations.length !== 1 ? 's' : ''} to verify`}
+                      >
+                        {testCase.expectations.length} exp
                       </span>
                     </div>
                   </AccordionTrigger>
@@ -992,13 +998,23 @@ export function TestCasesPanel() {
                         </Button>
                         {result && (
                           <Button
-                            variant="outline"
+                            variant={
+                              executionTestCaseId === testCase.id
+                                ? 'secondary'
+                                : 'outline'
+                            }
                             size="sm"
                             onClick={() => showTestOnGraph(testCase)}
-                            title="View results on graph"
+                            title={
+                              executionTestCaseId === testCase.id
+                                ? 'Currently shown on graph'
+                                : 'View results on graph'
+                            }
                           >
                             <Eye className="h-3 w-3 mr-1" />
-                            View
+                            {executionTestCaseId === testCase.id
+                              ? 'Viewing'
+                              : 'View'}
                           </Button>
                         )}
                         <DropdownMenu>

@@ -134,6 +134,8 @@ interface EditorState {
   // Cross-panel communication
   pendingExecuteInputs: Record<string, unknown> | null
   setPendingExecuteInputs: (inputs: Record<string, unknown> | null) => void
+  pendingRun: boolean
+  setPendingRun: (pending: boolean) => void
 
   // Utility
   markClean: () => void
@@ -159,6 +161,7 @@ export const useDMNStore = create<EditorState>()(
       executionTestCaseId: null,
       executionTestCaseName: null,
       pendingExecuteInputs: null,
+      pendingRun: false,
 
       // Model management
       setModel: (model) =>
@@ -564,6 +567,11 @@ export const useDMNStore = create<EditorState>()(
       setPendingExecuteInputs: (inputs) =>
         set((state) => {
           state.pendingExecuteInputs = inputs
+        }),
+
+      setPendingRun: (pending) =>
+        set((state) => {
+          state.pendingRun = pending
         }),
 
       // Utility

@@ -59,6 +59,8 @@ export function ExecutionPanel() {
     setIsExecuting,
     pendingExecuteInputs,
     setPendingExecuteInputs,
+    pendingRun,
+    setPendingRun,
     addTestCase,
     setActiveLeftTab,
     select,
@@ -137,7 +139,7 @@ export function ExecutionPanel() {
   }
 
   // Execute the model
-  const runExecution = () => {
+  const runExecution = useCallback(() => {
     setIsExecuting(true)
 
     try {
@@ -175,7 +177,15 @@ export function ExecutionPanel() {
     } finally {
       setIsExecuting(false)
     }
-  }
+  }, [model, inputValues, setIsExecuting, setExecutionContext])
+
+  // Handle pending run from toolbar
+  useEffect(() => {
+    if (pendingRun) {
+      setPendingRun(false)
+      runExecution()
+    }
+  }, [pendingRun, setPendingRun, runExecution])
 
   // Clear execution results
   const clearExecution = () => {
@@ -237,6 +247,15 @@ export function ExecutionPanel() {
           Execute
         </h2>
         <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearExecution}
+            disabled={!executionContext}
+            title="Clear results from graph"
+          >
+            <Eraser className="h-4 w-4" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm">
@@ -251,13 +270,6 @@ export function ExecutionPanel() {
               <DropdownMenuItem onClick={openCreateTestDialog}>
                 <FlaskConical className="h-4 w-4 mr-2" />
                 Create Test Case
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={clearExecution}
-                disabled={!executionContext}
-              >
-                <Eraser className="h-4 w-4 mr-2" />
-                Clear Results
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
