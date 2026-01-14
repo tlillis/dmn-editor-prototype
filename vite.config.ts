@@ -12,4 +12,14 @@ export default defineConfig({
       '@': path.resolve(path.dirname(fileURLToPath(import.meta.url)), './src'),
     },
   },
+  server: {
+    proxy: {
+      // Proxy Extended Services requests to bypass CORS
+      '/kie-proxy': {
+        target: 'http://127.0.0.1:21345',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/kie-proxy/, ''),
+      },
+    },
+  },
 })

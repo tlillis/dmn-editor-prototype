@@ -11,9 +11,16 @@ import {
   Eraser,
   FolderOpen,
   ChevronDown,
+  Cpu,
+  Check,
+  X,
+  Loader2,
+  Settings,
 } from 'lucide-react'
 import { exportToDMN } from '../utils/dmn-export'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { getAllEngines, getEngine } from '../../../lib/engines'
+import type { EngineId } from '../../../lib/engines'
 import { sampleSnapModel } from '../data/sample-snap-model'
 import {
   Dialog,
@@ -46,11 +53,76 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
     clearAllResults,
     executionContext,
     testResults,
+    selectedEngineId,
+    engineConnectionStatus,
+    extendedServicesConfig,
+    setSelectedEngine,
+    setEngineConnectionStatus,
+    setExtendedServicesConfig,
   } = useDMNStore()
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false)
   const [newModelName, setNewModelName] = useState('')
+  const [isCheckingConnection, setIsCheckingConnection] = useState(false)
+  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false)
+  const [configHost, setConfigHost] = useState(extendedServicesConfig.host)
+  const [configPort, setConfigPort] = useState(extendedServicesConfig.port)
 
   const hasResults = executionContext !== null || testResults.size > 0
+  const engines = getAllEngines()
+  const selectedEngine = getEngine(selectedEngineId)
+
+  // Check connection when selecting an engine that requires it
+  const checkEngineConnection = useCallback(
+    async (engineId: EngineId) => {
+      const engine = getEngine(engineId)
+      if (engine.requiresConnection && engine.checkConnection) {
+        setIsCheckingConnection(true)
+        try {
+          const connected = await engine.checkConnection()
+          setEngineConnectionStatus(engineId, connected)
+        } catch {
+          setEngineConnectionStatus(engineId, false)
+        }
+        setIsCheckingConnection(false)
+      }
+    },
+    [setEngineConnectionStatus]
+  )
+
+  // Check Extended Services connection on mount and when selected
+  useEffect(() => {
+    if (
+      selectedEngineId === 'extended-services' &&
+      engineConnectionStatus['extended-services'] === null
+    ) {
+      checkEngineConnection('extended-services')
+    }
+  }, [selectedEngineId, engineConnectionStatus, checkEngineConnection])
+
+  const handleEngineSelect = async (engineId: EngineId) => {
+    setSelectedEngine(engineId)
+    const engine = getEngine(engineId)
+    if (engine.requiresConnection) {
+      await checkEngineConnection(engineId)
+    }
+  }
+
+  const getConnectionIcon = (engineId: EngineId) => {
+    const engine = getEngine(engineId)
+    if (!engine.requiresConnection) return null
+
+    const status = engineConnectionStatus[engineId]
+    if (
+      status === null ||
+      (isCheckingConnection && engineId === selectedEngineId)
+    ) {
+      return <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+    }
+    if (status) {
+      return <Check className="h-3 w-3 text-green-500" />
+    }
+    return <X className="h-3 w-3 text-red-500" />
+  }
 
   const handleExportDMN = () => {
     const xml = exportToDMN(model)
@@ -105,6 +177,19 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
     setNewModelName('')
     setIsNewDialogOpen(false)
   }
+
+  const openConfigDialog = useCallback(() => {
+    setConfigHost(extendedServicesConfig.host)
+    setConfigPort(extendedServicesConfig.port)
+    setIsConfigDialogOpen(true)
+  }, [extendedServicesConfig])
+
+  const saveConfig = useCallback(async () => {
+    setExtendedServicesConfig({ host: configHost, port: configPort })
+    setIsConfigDialogOpen(false)
+    // Test connection with new settings
+    await checkEngineConnection('extended-services')
+  }, [configHost, configPort, setExtendedServicesConfig, checkEngineConnection])
 
   return (
     <div className="h-14 border-b bg-background flex items-center justify-between px-4">
@@ -177,6 +262,55 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
           </DialogContent>
         </Dialog>
 
+        {/* Extended Services Configuration Dialog */}
+        <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Configure Extended Services</DialogTitle>
+              <DialogDescription>
+                Configure the connection to KIE Extended Services.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <div>
+                <Label htmlFor="config-host">Host</Label>
+                <Input
+                  id="config-host"
+                  value={configHost}
+                  onChange={(e) => setConfigHost(e.target.value)}
+                  placeholder="localhost"
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label htmlFor="config-port">Port</Label>
+                <Input
+                  id="config-port"
+                  type="number"
+                  value={configPort}
+                  onChange={(e) =>
+                    setConfigPort(parseInt(e.target.value, 10) || 0)
+                  }
+                  placeholder="21345"
+                  className="mt-2"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                URL: http://{configHost}:{configPort}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsConfigDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={saveConfig}>Save & Test</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Import/Export dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -214,6 +348,80 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
           <Eraser className="h-4 w-4 mr-2" />
           Clear Results
         </Button>
+
+        {/* Engine Selector */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-w-[180px] justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Cpu className="h-4 w-4" />
+                <span className="truncate">{selectedEngine.name}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                {getConnectionIcon(selectedEngineId)}
+                <ChevronDown className="h-3 w-3" />
+              </div>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-[280px]">
+            {engines.map((engine) => (
+              <DropdownMenuItem
+                key={engine.id}
+                onClick={() => handleEngineSelect(engine.id as EngineId)}
+                className="flex items-start gap-3 py-2"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{engine.name}</span>
+                    {engine.id === selectedEngineId && (
+                      <Check className="h-3 w-3 text-primary" />
+                    )}
+                    {getConnectionIcon(engine.id as EngineId)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {engine.description}
+                  </p>
+                </div>
+              </DropdownMenuItem>
+            ))}
+            {selectedEngineId === 'extended-services' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={openConfigDialog}>
+                  <Settings className="h-4 w-4 mr-2" />
+                  Configure Connection...
+                </DropdownMenuItem>
+                {engineConnectionStatus[selectedEngineId] === false && (
+                  <div className="px-2 py-2">
+                    <p className="text-xs text-red-500">
+                      Cannot connect to {selectedEngine.name} at{' '}
+                      {extendedServicesConfig.host}:
+                      {extendedServicesConfig.port}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 w-full"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        checkEngineConnection(selectedEngineId)
+                      }}
+                    >
+                      <Loader2
+                        className={`h-3 w-3 mr-2 ${isCheckingConnection ? 'animate-spin' : ''}`}
+                      />
+                      Retry Connection
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Run - opens Execute panel */}
         <Button variant="default" size="sm" onClick={onRunClick}>

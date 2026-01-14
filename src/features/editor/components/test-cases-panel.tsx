@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useDMNStore } from '../../../store/dmn-store'
-import { executeModel, formatValue } from '../../../lib/feel-engine'
+import { formatValue } from '../../../lib/feel-engine'
+import { getEngine } from '../../../lib/engines'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { Button } from '../../../components/ui/button'
@@ -91,6 +92,7 @@ export function TestCasesPanel() {
     setActiveLeftTab,
     select,
     centerOnNode,
+    selectedEngineId,
   } = useDMNStore()
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -225,7 +227,7 @@ export function TestCasesPanel() {
   )
 
   // Run test case and capture outputs
-  const captureOutputs = useCallback(() => {
+  const captureOutputs = useCallback(async () => {
     const normalizedInputs: Record<string, unknown> = {}
     model.inputs.forEach((input) => {
       const value = builderInputs[input.id]
@@ -236,7 +238,8 @@ export function TestCasesPanel() {
       }
     })
 
-    const result = executeModel(model, normalizedInputs)
+    const engine = getEngine(selectedEngineId)
+    const result = await engine.evaluate(model, normalizedInputs)
 
     // Create expectations from successful decision outputs
     const newExpectations: TestExpectation[] = []
@@ -251,10 +254,10 @@ export function TestCasesPanel() {
     })
 
     setBuilderExpectations(newExpectations)
-  }, [model, builderInputs])
+  }, [model, builderInputs, selectedEngineId])
 
   // Preview execution - run model and show results on graph nodes
-  const previewExecution = useCallback(() => {
+  const previewExecution = useCallback(async () => {
     setIsExecuting(true)
 
     try {
@@ -268,7 +271,8 @@ export function TestCasesPanel() {
         }
       })
 
-      const result = executeModel(model, normalizedInputs)
+      const engine = getEngine(selectedEngineId)
+      const result = await engine.evaluate(model, normalizedInputs)
 
       // Convert to ExecutionContext format for the store (same as Execute panel)
       const context = {
@@ -290,7 +294,13 @@ export function TestCasesPanel() {
     } finally {
       setIsExecuting(false)
     }
-  }, [model, builderInputs, setExecutionContext, setIsExecuting])
+  }, [
+    model,
+    builderInputs,
+    setExecutionContext,
+    setIsExecuting,
+    selectedEngineId,
+  ])
 
   // Save test case from builder
   const saveTestCase = useCallback(() => {
@@ -323,7 +333,7 @@ export function TestCasesPanel() {
 
   // Run a single test case (optionally show results on graph)
   const runTestCase = useCallback(
-    (testCase: TestCase, showOnGraph: boolean = true) => {
+    async (testCase: TestCase, showOnGraph: boolean = true) => {
       const startTime = Date.now()
 
       // Normalize inputs
@@ -340,7 +350,8 @@ export function TestCasesPanel() {
         }
       })
 
-      const result = executeModel(model, normalizedInputs)
+      const engine = getEngine(selectedEngineId)
+      const result = await engine.evaluate(model, normalizedInputs)
 
       // Build expectations map for quick lookup
       const expectationsMap = new Map(
@@ -433,16 +444,16 @@ export function TestCasesPanel() {
         )
       }
     },
-    [model, setTestResult, setExecutionContext]
+    [model, setTestResult, setExecutionContext, selectedEngineId]
   )
 
   // Show existing test results on graph (without re-running)
   const showTestOnGraph = useCallback(
-    (testCase: TestCase) => {
+    async (testCase: TestCase) => {
       const testResult = testResults.get(testCase.id)
       if (!testResult) {
         // No results yet, run the test
-        runTestCase(testCase, true)
+        await runTestCase(testCase, true)
         return
       }
 
@@ -488,13 +499,14 @@ export function TestCasesPanel() {
   )
 
   // Run all test cases (don't update graph for batch runs)
-  const runAllTests = useCallback(() => {
+  const runAllTests = useCallback(async () => {
     setIsRunningTests(true)
     clearTestResults()
 
-    model.testCases.forEach((testCase) => {
-      runTestCase(testCase, false) // Don't show on graph for batch runs
-    })
+    // Run all tests - could be parallel or sequential depending on engine
+    await Promise.all(
+      model.testCases.map((testCase) => runTestCase(testCase, false))
+    )
 
     setIsRunningTests(false)
   }, [model.testCases, runTestCase, setIsRunningTests, clearTestResults])
@@ -1017,46 +1029,46 @@ export function TestCasesPanel() {
                               : 'View'}
                           </Button>
                         )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="ml-auto"
-                            >
-                              <MoreHorizontal className="h-3 w-3" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => initializeBuilder(testCase)}
-                            >
-                              <Pencil className="h-3 w-3 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => duplicateTestCase(testCase.id)}
-                            >
-                              <Copy className="h-3 w-3 mr-2" />
-                              Duplicate
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                openSendToExecuteDialog(testCase.inputs)
-                              }
-                            >
-                              <Send className="h-3 w-3 mr-2" />
-                              Send to Execute
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => deleteTestCase(testCase.id)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-3 w-3 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex gap-1 ml-auto">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => initializeBuilder(testCase)}
+                            title="Edit test case"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => duplicateTestCase(testCase.id)}
+                              >
+                                <Copy className="h-3 w-3 mr-2" />
+                                Duplicate
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  openSendToExecuteDialog(testCase.inputs)
+                                }
+                              >
+                                <Send className="h-3 w-3 mr-2" />
+                                Send to Execute
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => deleteTestCase(testCase.id)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-3 w-3 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
 
                       {/* Results */}

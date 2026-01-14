@@ -1,10 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useDMNStore } from '../../../store/dmn-store'
-import {
-  executeModel,
-  formatValue,
-  type ExecutionResult,
-} from '../../../lib/feel-engine'
+import { formatValue } from '../../../lib/feel-engine'
+import { getEngine, type ExecutionResult } from '../../../lib/engines'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { Button } from '../../../components/ui/button'
@@ -65,6 +62,7 @@ export function ExecutionPanel() {
     setActiveLeftTab,
     select,
     centerOnNode,
+    selectedEngineId,
   } = useDMNStore()
   const [inputValues, setInputValues] = useState<Record<string, unknown>>({})
   const [lastResult, setLastResult] = useState<ExecutionResult | null>(null)
@@ -139,7 +137,7 @@ export function ExecutionPanel() {
   }
 
   // Execute the model
-  const runExecution = useCallback(() => {
+  const runExecution = useCallback(async () => {
     setIsExecuting(true)
 
     try {
@@ -154,7 +152,9 @@ export function ExecutionPanel() {
         }
       })
 
-      const result = executeModel(model, normalizedInputs)
+      // Get the selected engine and execute
+      const engine = getEngine(selectedEngineId)
+      const result = await engine.evaluate(model, normalizedInputs)
       setLastResult(result)
 
       // Convert to ExecutionContext format for the store
@@ -177,7 +177,13 @@ export function ExecutionPanel() {
     } finally {
       setIsExecuting(false)
     }
-  }, [model, inputValues, setIsExecuting, setExecutionContext])
+  }, [
+    model,
+    inputValues,
+    setIsExecuting,
+    setExecutionContext,
+    selectedEngineId,
+  ])
 
   // Handle pending run from toolbar
   useEffect(() => {

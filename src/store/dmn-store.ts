@@ -23,6 +23,11 @@ import {
   findDuplicateNames,
   wouldNameConflict,
 } from '../types/dmn'
+import type { EngineId, ExtendedServicesConfig } from '../lib/engines'
+import {
+  DEFAULT_EXTENDED_SERVICES_CONFIG,
+  extendedServicesEngine,
+} from '../lib/engines'
 
 // Selection state
 export type SelectionType = 'input' | 'decision' | 'bkm' | 'constant' | null
@@ -137,6 +142,17 @@ interface EditorState {
   pendingRun: boolean
   setPendingRun: (pending: boolean) => void
 
+  // Engine selection
+  selectedEngineId: EngineId
+  engineConnectionStatus: Record<EngineId, boolean | null>
+  extendedServicesConfig: ExtendedServicesConfig
+  setSelectedEngine: (engineId: EngineId) => void
+  setEngineConnectionStatus: (
+    engineId: EngineId,
+    connected: boolean | null
+  ) => void
+  setExtendedServicesConfig: (config: ExtendedServicesConfig) => void
+
   // Utility
   markClean: () => void
 }
@@ -162,6 +178,12 @@ export const useDMNStore = create<EditorState>()(
       executionTestCaseName: null,
       pendingExecuteInputs: null,
       pendingRun: false,
+      selectedEngineId: 'feelin' as EngineId,
+      engineConnectionStatus: {
+        feelin: true,
+        'extended-services': null,
+      } as Record<EngineId, boolean | null>,
+      extendedServicesConfig: { ...DEFAULT_EXTENDED_SERVICES_CONFIG },
 
       // Model management
       setModel: (model) =>
@@ -574,6 +596,26 @@ export const useDMNStore = create<EditorState>()(
           state.pendingRun = pending
         }),
 
+      // Engine selection
+      setSelectedEngine: (engineId) =>
+        set((state) => {
+          state.selectedEngineId = engineId
+        }),
+
+      setEngineConnectionStatus: (engineId, connected) =>
+        set((state) => {
+          state.engineConnectionStatus[engineId] = connected
+        }),
+
+      setExtendedServicesConfig: (config) =>
+        set((state) => {
+          state.extendedServicesConfig = config
+          // Update the singleton engine instance with the new URL
+          extendedServicesEngine.setUrl(config.host, config.port)
+          // Reset connection status when config changes
+          state.engineConnectionStatus['extended-services'] = null
+        }),
+
       // Utility
       markClean: () =>
         set((state) => {
@@ -582,28 +624,48 @@ export const useDMNStore = create<EditorState>()(
     })),
     {
       name: 'dmn-editor-storage',
-      // Only persist the model, not UI state
-      partialize: (state) => ({ model: state.model }),
-      // Handle rehydration - merge persisted model with fresh state
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...(persistedState as Partial<EditorState>),
-        // Reset transient state on load
-        isDirty: false,
-        selection: { type: null, id: null },
-        collapsedNodes: new Set<string>(),
-        pendingCenterNodeId: null,
-        activeLeftTab: 'model' as LeftPanelTab,
-        executionContext: null,
-        isExecuting: false,
-        executionSource: null,
-        executionInputsHash: null,
-        executionTestCaseId: null,
-        executionTestCaseName: null,
-        testResults: new Map<string, TestCaseResult>(),
-        isRunningTests: false,
-        pendingExecuteInputs: null,
+      // Persist model and engine configuration
+      partialize: (state) => ({
+        model: state.model,
+        extendedServicesConfig: state.extendedServicesConfig,
       }),
+      // Handle rehydration - merge persisted model with fresh state
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<EditorState>
+        const config =
+          persisted.extendedServicesConfig ?? DEFAULT_EXTENDED_SERVICES_CONFIG
+
+        // Update the engine singleton with persisted config
+        extendedServicesEngine.setUrl(config.host, config.port)
+
+        return {
+          ...currentState,
+          ...persisted,
+          // Reset transient state on load
+          isDirty: false,
+          selection: { type: null, id: null },
+          collapsedNodes: new Set<string>(),
+          pendingCenterNodeId: null,
+          activeLeftTab: 'model' as LeftPanelTab,
+          executionContext: null,
+          isExecuting: false,
+          executionSource: null,
+          executionInputsHash: null,
+          executionTestCaseId: null,
+          executionTestCaseName: null,
+          testResults: new Map<string, TestCaseResult>(),
+          isRunningTests: false,
+          pendingExecuteInputs: null,
+          pendingRun: false,
+          selectedEngineId: 'feelin' as EngineId,
+          engineConnectionStatus: {
+            feelin: true,
+            'extended-services': null,
+          } as Record<EngineId, boolean | null>,
+          // Keep persisted engine config
+          extendedServicesConfig: config,
+        }
+      },
     }
   )
 )
