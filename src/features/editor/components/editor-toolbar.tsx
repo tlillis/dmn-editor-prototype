@@ -63,6 +63,7 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false)
   const [newModelName, setNewModelName] = useState('')
   const [isCheckingConnection, setIsCheckingConnection] = useState(false)
+  // Extended Services config dialog state
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false)
   const [configHost, setConfigHost] = useState(extendedServicesConfig.host)
   const [configPort, setConfigPort] = useState(extendedServicesConfig.port)

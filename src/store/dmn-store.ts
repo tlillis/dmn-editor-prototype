@@ -632,11 +632,14 @@ export const useDMNStore = create<EditorState>()(
       // Handle rehydration - merge persisted model with fresh state
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<EditorState>
-        const config =
+        const extServicesConfig =
           persisted.extendedServicesConfig ?? DEFAULT_EXTENDED_SERVICES_CONFIG
 
         // Update the engine singleton with persisted config
-        extendedServicesEngine.setUrl(config.host, config.port)
+        extendedServicesEngine.setUrl(
+          extServicesConfig.host,
+          extServicesConfig.port
+        )
 
         return {
           ...currentState,
@@ -663,7 +666,7 @@ export const useDMNStore = create<EditorState>()(
             'extended-services': null,
           } as Record<EngineId, boolean | null>,
           // Keep persisted engine config
-          extendedServicesConfig: config,
+          extendedServicesConfig: extServicesConfig,
         }
       },
     }
