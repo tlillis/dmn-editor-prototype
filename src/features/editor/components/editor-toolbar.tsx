@@ -16,6 +16,9 @@ import {
   X,
   Loader2,
   Settings,
+  ClipboardList,
+  Wrench,
+  Table,
 } from 'lucide-react'
 import { exportToDMN } from '../utils/dmn-export'
 import { useState, useEffect, useCallback } from 'react'
@@ -38,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu'
 import { Label } from '../../../components/ui/label'
+import { Link } from '@tanstack/react-router'
 
 interface EditorToolbarProps {
   onRunClick?: () => void
@@ -194,7 +198,7 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
 
   return (
     <div className="h-14 border-b bg-background flex items-center justify-between px-4">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2">
         {/* Model name (editable) */}
         <Input
           value={model.name}
@@ -206,9 +210,7 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
             (unsaved changes)
           </span>
         )}
-      </div>
 
-      <div className="flex items-center gap-2">
         {/* File dropdown - New and Samples */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -224,104 +226,6 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
               New Model
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setModel(sampleSnapModel)}>
-              <FlaskConical className="h-4 w-4 mr-2" />
-              Load Sample (SNAP)
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* New Model Dialog */}
-        <Dialog open={isNewDialogOpen} onOpenChange={setIsNewDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Model</DialogTitle>
-              <DialogDescription>
-                This will clear the current model. Make sure to save your work
-                first.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <Label htmlFor="new-model-name">Model Name</Label>
-              <Input
-                id="new-model-name"
-                value={newModelName}
-                onChange={(e) => setNewModelName(e.target.value)}
-                placeholder="New DMN Model"
-                className="mt-2"
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsNewDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleNewModel}>Create</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Extended Services Configuration Dialog */}
-        <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Configure Extended Services</DialogTitle>
-              <DialogDescription>
-                Configure the connection to KIE Extended Services.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-              <div>
-                <Label htmlFor="config-host">Host</Label>
-                <Input
-                  id="config-host"
-                  value={configHost}
-                  onChange={(e) => setConfigHost(e.target.value)}
-                  placeholder="localhost"
-                  className="mt-2"
-                />
-              </div>
-              <div>
-                <Label htmlFor="config-port">Port</Label>
-                <Input
-                  id="config-port"
-                  type="number"
-                  value={configPort}
-                  onChange={(e) =>
-                    setConfigPort(parseInt(e.target.value, 10) || 0)
-                  }
-                  placeholder="21345"
-                  className="mt-2"
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                URL: http://{configHost}:{configPort}
-              </p>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsConfigDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={saveConfig}>Save & Test</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Import/Export dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Import/Export
-              <ChevronDown className="h-3 w-3 ml-1" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={handleImportJSON}>
               <Upload className="h-4 w-4 mr-2" />
               Import JSON
@@ -335,21 +239,42 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
               <Download className="h-4 w-4 mr-2" />
               Export as DMN
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setModel(sampleSnapModel)}>
+              <FlaskConical className="h-4 w-4 mr-2" />
+              Load Sample (SNAP)
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Clear Results */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={clearAllResults}
-          disabled={!hasResults}
-          title="Clear all execution and test results"
-        >
-          <Eraser className="h-4 w-4 mr-2" />
-          Clear Results
-        </Button>
+        {/* Tools dropdown - Screener and Constants */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Wrench className="h-4 w-4 mr-2" />
+              Tools
+              <ChevronDown className="h-3 w-3 ml-1" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem asChild>
+              <Link to="/screener" className="flex items-center">
+                <ClipboardList className="h-4 w-4 mr-2" />
+                Screener
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/constants" className="flex items-center">
+                <Table className="h-4 w-4 mr-2" />
+                Constants Editor
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
+      {/* Execution controls - right side */}
+      <div className="flex items-center gap-2">
         {/* Engine Selector */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -424,12 +349,102 @@ export function EditorToolbar({ onRunClick }: EditorToolbarProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
+        {/* Clear Results */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={clearAllResults}
+          disabled={!hasResults}
+          title="Clear all execution and test results"
+        >
+          <Eraser className="h-4 w-4 mr-2" />
+          Clear Results
+        </Button>
+
         {/* Run - opens Execute panel */}
         <Button variant="default" size="sm" onClick={onRunClick}>
           <Play className="h-4 w-4 mr-2" />
           Run
         </Button>
       </div>
+
+      {/* New Model Dialog */}
+      <Dialog open={isNewDialogOpen} onOpenChange={setIsNewDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Model</DialogTitle>
+            <DialogDescription>
+              This will clear the current model. Make sure to save your work
+              first.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="new-model-name">Model Name</Label>
+            <Input
+              id="new-model-name"
+              value={newModelName}
+              onChange={(e) => setNewModelName(e.target.value)}
+              placeholder="New DMN Model"
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleNewModel}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Extended Services Configuration Dialog */}
+      <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Configure Extended Services</DialogTitle>
+            <DialogDescription>
+              Configure the connection to KIE Extended Services.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="config-host">Host</Label>
+              <Input
+                id="config-host"
+                value={configHost}
+                onChange={(e) => setConfigHost(e.target.value)}
+                placeholder="localhost"
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <Label htmlFor="config-port">Port</Label>
+              <Input
+                id="config-port"
+                type="number"
+                value={configPort}
+                onChange={(e) =>
+                  setConfigPort(parseInt(e.target.value, 10) || 0)
+                }
+                placeholder="21345"
+                className="mt-2"
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              URL: http://{configHost}:{configPort}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsConfigDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={saveConfig}>Save & Test</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
